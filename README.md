@@ -225,6 +225,74 @@ graph TD
   - Thất bại: `{ ok: false, error: { code: string, message: string } }`
 - [ ] **Không commit file rác:** Kiểm tra kỹ file `.gitignore` để tránh đẩy file database, backup, `node_modules`, `.env`.
 
+### 4.5. Hướng dẫn chi tiết xử lý xung đột mã nguồn (Git Merge Conflict Guide)
+
+Dù dự án đã phân chia ranh giới theo Module (`M1/M2/M3`), xung đột (Merge Conflict) vẫn có thể xảy ra khi nhiều thành viên cùng chỉnh sửa file cấu hình dùng chung (ví dụ `package.json`, `.env.example`, hoặc tài liệu hợp đồng). Dưới đây là quy trình 5 bước chuẩn hóa để xử lý:
+
+#### 1. Nguyên nhân thường gặp:
+- **Cùng sửa file cấu hình hoặc dependencies:** Hai người cùng thêm thư viện vào `package.json` hoặc xung đột file `package-lock.json`.
+- **Nhánh feature bị lỗi thời:** Nhánh của bạn rẽ từ `develop` quá lâu mà chưa đồng bộ các commit mới nhất mà đồng đội vừa merge.
+- **Sửa đổi tài liệu hợp đồng:** Hai người cùng chỉnh sửa bảng endpoint hoặc DTO trong tài liệu đặc tả.
+
+#### 2. Quy trình 5 bước giải quyết xung đột:
+
+**Bước 1: Kéo code mới nhất từ nhánh `develop` về nhánh feature của bạn**
+```bash
+# Đang đứng tại nhánh feature của bạn
+git checkout feature/mX-ten-task
+git fetch origin
+git merge origin/develop
+```
+
+Khi có xung đột, Git sẽ dừng quá trình merge và thông báo:
+```text
+CONFLICT (content): Merge conflict in <tên_file>
+Automatic merge failed; fix conflicts and then commit the result.
+```
+
+**Bước 2: Mở file bị xung đột trong VS Code**  
+Git sẽ đánh dấu đoạn code tranh chấp bằng cú pháp:
+```text
+<<<<<<< HEAD (Mã nguồn hiện tại trên máy của bạn)
+const port = process.env.PORT || 4000;
+=======
+const port = process.env.PORT || 5000;
+>>>>>>> origin/develop (Mã nguồn mới nhất từ nhánh develop)
+```
+
+Sử dụng thanh công cụ trực quan phía trên đoạn conflict trong VS Code:
+- **Accept Current Change:** Giữ lại code hiện tại của bạn.
+- **Accept Incoming Change:** Lấy code mới từ `develop` (bỏ code của bạn).
+- **Accept Both Changes:** Giữ cả hai (thường dùng khi cả 2 người cùng import route mới hoặc thêm biến môi trường khác nhau).
+- **Chỉnh sửa thủ công:** Xóa các ký hiệu `<<<<<<<`, `=======`, `>>>>>>>` và viết lại đoạn code kết hợp logic chính xác nhất.
+
+**Bước 3: Xử lý conflict ở file `package-lock.json` (nếu có)**  
+Nếu bị conflict file `package-lock.json`, cách an toàn và sạch nhất:
+```bash
+# 1. Giải quyết conflict ở file package.json trước
+# 2. Chạy npm install để npm tự động tái tạo lại package-lock.json chuẩn:
+npm install
+```
+
+**Bước 4: Kiểm tra lại ứng dụng**  
+Chạy thử dự án cục bộ để đảm bảo code sau khi gộp không bị lỗi cú pháp hoặc crash server:
+```bash
+npm run dev   # Kiểm tra backend / frontend
+```
+
+**Bước 5: Đánh dấu đã giải quyết, commit và đẩy lên GitHub**
+```bash
+git add .
+git commit -m "fix(merge): resolve merge conflict with develop"
+git push origin feature/mX-ten-task
+```
+Sau đó bạn có thể lên GitHub tạo hoặc tiếp tục cập nhật Pull Request vào `develop`.
+
+#### 3. Ba quy tắc vàng phòng tránh xung đột:
+- 🛡️ **Tuyệt đối KHÔNG bao giờ dùng `git push --force`** lên các nhánh chung `main` và `develop`.
+- 🗣️ **Không tự ý xóa code của bạn mình** nếu bạn chưa hiểu đoạn code đó làm gì. Hãy trao đổi nhanh 2 phút với đồng đội phụ trách để thống nhất.
+- 🔄 **Thói quen đầu ngày:** Luôn `git checkout develop && git pull origin develop` trước khi rẽ nhánh mới làm task.
+
 ---
 
 ## 5. Phân chia Task chi tiết - SPRINT 0 & 1: Nền móng & CRUD Cốt lõi
@@ -341,7 +409,7 @@ graph TD
 | **Lỗi `SYNTAX ERROR: Unknown function shortestPath`** | Phiên bản FalkorDB đang dùng cú pháp hàm tìm đường đi khác hoặc thiếu ngoặc. | Chạy thử câu truy vấn trực tiếp trên FalkorDB Browser (`:3000`). Nếu không hỗ trợ, chuyển sang thuật toán BFS dự phòng trong `backend/src/utils/graphAlgos.js`. *(M1/M2)* |
 | **Frontend báo lỗi CORS khi gọi API Backend** | Backend chưa cho phép Origin từ Vite frontend (`http://localhost:5173`). | Kiểm tra biến `CORS_ORIGIN` trong `.env` của Backend; đảm bảo middleware `cors({ origin: env.corsOrigin })` được gọi trước các routes trong `app.js`. *(M2)* |
 | **Đồ thị Cytoscape không vẽ hoặc canvas trắng xóa** | Thẻ div chứa canvas chưa có kích thước cố định (`height: 100%`) hoặc dữ liệu truyền vào sai định dạng `GraphDto`. | Đảm bảo thẻ cha có class `h-full w-full relative`. Kiểm tra console xem `nodes` và `edges` có đúng cấu trúc `{ data: { id, source, target } }` hay không. *(M3)* |
-| **Xung đột mã nguồn (Merge Conflict) ở `SPEC_AI_Implementation.md`** | 2 thành viên tự ý sửa đổi hợp đồng API hoặc DTO mà chưa họp thống nhất. | **Tuyệt đối không tự ý ghi đè.** Mở thảo luận nhóm 5 phút, thống nhất hợp đồng rồi commit trong một PR riêng trước khi tiếp tục code. *(Cả nhóm)* |
+| **Xung đột mã nguồn (Merge Conflict) khi pull/merge** | Nhiều thành viên cùng sửa file cấu hình, `package-lock.json`, hoặc nhánh feature bị lỗi thời. | Thực hiện theo quy trình 5 bước ở **mục 4.5**. Dùng VS Code chọn Accept Changes hoặc resolve thủ công, chạy `npm install` nếu xung đột lockfile, kiểm tra chạy thử rồi commit. *(Cả nhóm)* |
 | **Không tìm thấy đường đi giữa 2 người dùng (BT1)** | Đồ thị bị phân mảnh thành nhiều thành phần liên thông rời rạc hoặc vượt quá `maxDepth=6`. | Dùng FalkorDB Browser kiểm tra lại dữ liệu seed xem có đường nối `FOLLOWS` giữa 2 username đó không; thử tăng tạm thời `maxDepth` để kiểm tra. *(M1/M3)* |
 | **Lỗi tràn bộ nhớ (Heap Out of Memory) khi Import CSV lớn** | Đọc toàn bộ file dung lượng lớn vào RAM trước khi xử lý. | Chuyển sang đọc stream từng dòng bằng `csv-parse` và nạp vào DB theo từng lô (Batching 2.000 dòng/lần với câu lệnh `UNWIND $rows`). *(M1)* |
 
