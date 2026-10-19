@@ -26,6 +26,7 @@ http.interceptors.response.use(
 );
 
 if (import.meta.env.VITE_USE_MOCK === 'true') {
-  const { installMock } = await import('./mock');
-  installMock(http);
+  import('./mock').then(({ installMock }) => {
+    installMock(http);
+  });
 }
