@@ -1,0 +1,33 @@
+{
+  "name": "social-graph-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "test": "vitest run",
+    "schema": "node ../database/scripts/init-schema.js",
+    "seed": "node ../database/seed/load.js",
+    "seed:mini": "node ../database/seed/mini-seed.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.5.6",
+    "csv-stringify": "^6.5.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "falkordb": "^0.1.7",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "nanoid": "^5.0.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4",
+    "supertest": "^7.0.0",
+    "vitest": "^2.0.0"
+  }
+}

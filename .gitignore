@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+backend/data/audit.ndjson
+data/audit.ndjson
+
+# Database data & dumps
+database/data/*.csv
+database/data/*.json
+database/data/*.rdb
+!database/data/.gitkeep
+falkordb_data/
+benchmark/results/*.json
+!benchmark/results/summary.json
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
