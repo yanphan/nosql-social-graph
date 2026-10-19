@@ -8,7 +8,7 @@ export const analytics = {
   // BT1 — trả về danh sách node theo thứ tự trên đường đi
   shortestPath: (maxDepth = 6) => `
     MATCH (a:User {username:$a}), (b:User {username:$b})
-    MATCH p = shortestPath((a)-[:FOLLOWS*..${depth(maxDepth)}]->(b))
+    WITH shortestPath((a)-[:FOLLOWS*..${depth(maxDepth)}]->(b)) AS p
     RETURN nodes(p) AS ns, relationships(p) AS rs, length(p) AS len`,
 
   // BT2 — $since = epoch ms đầu cửa sổ. Trọng số: like=1, comment=2, share=3 (service cộng 3 truy vấn)

@@ -1,0 +1,50 @@
+======================================================================
+QUERY: BT3-FRIEND-SUGGESTIONS
+======================================================================
+CYPHER:
+MATCH (me:User {id:'usr_alice'})-[:FOLLOWS]->(f:User)-[:FOLLOWS]->(c:User) WHERE c.id <> me.id AND NOT (me)-[:FOLLOWS]->(c) AND coalesce(c.status,'active') <> 'locked' WITH me, c, count(DISTINCT f) AS mutual OPTIONAL MATCH (me)-[:INTERESTED_IN]->(t:Topic)<-[:INTERESTED_IN]-(c) WITH c, mutual, count(DISTINCT t) AS sharedTopics RETURN c.id AS id, c.username AS username, mutual, sharedTopics, mutual*2 + sharedTopics AS score ORDER BY score DESC LIMIT 10
+
+----------------------------------------------------------------------
+GRAPH.EXPLAIN (Execution Plan):
+----------------------------------------------------------------------
+Results
+    Limit
+        Sort
+            Project
+                Aggregate
+                    Apply
+                        Aggregate
+                            Anti Semi Apply
+                                Filter
+                                    Conditional Traverse | (f)->(c:User)
+                                        Conditional Traverse | (me)->(f:User)
+                                            Node By Index Scan | (me:User)
+                                Expand Into | (me)->(c)
+                                    Argument
+                        Optional
+                            Expand Into | (t)->(c)
+                                Conditional Traverse | (me)->(t:Topic)
+                                    Argument
+
+----------------------------------------------------------------------
+GRAPH.PROFILE (Execution Metrics & Profiling):
+----------------------------------------------------------------------
+Results | Records produced: 10, Execution time: 0.001484 ms
+    Limit | Records produced: 10, Execution time: 0.003075 ms
+        Sort | Records produced: 10, Execution time: 0.036372 ms
+            Project | Records produced: 489, Execution time: 0.286267 ms
+                Aggregate | Records produced: 489, Execution time: 0.758421 ms
+                    Apply | Records produced: 499, Execution time: 0.435740 ms
+                        Aggregate | Records produced: 489, Execution time: 1.010340 ms
+                            Anti Semi Apply | Records produced: 603, Execution time: 0.175293 ms
+                                Filter | Records produced: 703, Execution time: 0.723440 ms
+                                    Conditional Traverse | (f)->(c:User) | Records produced: 710, Execution time: 0.340053 ms
+                                        Conditional Traverse | (me)->(f:User) | Records produced: 33, Execution time: 0.171565 ms
+                                            Node By Index Scan | (me:User) | Records produced: 1, Execution time: 0.021742 ms
+                                Expand Into | (me)->(c) | Records produced: 100, Execution time: 0.122677 ms
+                                    Argument | Records produced: 703, Execution time: 0.032092 ms
+                        Optional | Records produced: 499, Execution time: 0.065110 ms
+                            Expand Into | (c)->(c) | Records produced: 99, Execution time: 3.317000 ms
+                                Conditional Traverse | (me)->(t:Topic) | Records produced: 2445, Execution time: 8.390130 ms
+                                    Argument | Records produced: 489, Execution time: 0.044729 ms
+======================================================================

@@ -8,6 +8,10 @@ export async function connectDb() {
     socket: { host: env.db.host, port: env.db.port },
     password: env.db.password,
   });
+  try {
+    const conn = await client.connection;
+    await conn.sendCommand(['GRAPH.CONFIG', 'SET', 'TIMEOUT', '0']);
+  } catch (_) {}
   graph = client.selectGraph(env.db.graph);
   return graph;
 }

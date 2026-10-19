@@ -1,0 +1,26 @@
+======================================================================
+QUERY: BT2-TRENDING
+======================================================================
+CYPHER:
+MATCH (t:Topic)<-[:ABOUT]-(p:Post)<-[l:LIKED]-(:User) WHERE l.at >= 1700000000000 RETURN t.id AS id, t.name AS name, count(l) AS n
+
+----------------------------------------------------------------------
+GRAPH.EXPLAIN (Execution Plan):
+----------------------------------------------------------------------
+Results
+    Aggregate
+        Conditional Traverse | (p)->(t:Topic)
+            Filter
+                Conditional Traverse | (@anon_0)-[l:LIKED]->(p:Post)
+                    Node By Label Scan | (@anon_0:User)
+
+----------------------------------------------------------------------
+GRAPH.PROFILE (Execution Metrics & Profiling):
+----------------------------------------------------------------------
+Results | Records produced: 100, Execution time: 0.006906 ms
+    Aggregate | Records produced: 100, Execution time: 132.119520 ms
+        Conditional Traverse | (p)->(t:Topic) | Records produced: 582534, Execution time: 508.759990 ms
+            Filter | Records produced: 300451, Execution time: 83.427572 ms
+                Conditional Traverse | (@anon_0)-[l:LIKED]->(p:Post) | Records produced: 300451, Execution time: 183.539742 ms
+                    Node By Label Scan | (@anon_0:User) | Records produced: 10000, Execution time: 0.903276 ms
+======================================================================
