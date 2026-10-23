@@ -11,5 +11,20 @@ services:
       - falkordb_data:/var/lib/falkordb/data
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres_bench
+    profiles: ["bench"]
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres_bench_pass}
+      POSTGRES_DB: ${PG_DATABASE:-social_bench}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
 volumes:
   falkordb_data:
+  pg_data:

@@ -4,11 +4,7 @@ import * as usersRepo from '../repositories/users.repo.js';
 import { signToken } from '../middlewares/auth.js';
 import { Conflict, Unauth, Forbidden, NotFound } from '../utils/errors.js';
 
-const sanitizeUser = (user) => {
-  if (!user) return null;
-  const { passwordHash, ...rest } = user;
-  return rest;
-};
+import { sanitizeUser } from './users.service.js';
 
 export async function register({ username, password, fullName, email }) {
   const existing = await usersRepo.findByUsername(username);
@@ -32,7 +28,7 @@ export async function register({ username, password, fullName, email }) {
   const token = signToken(newUser);
   return {
     token,
-    user: sanitizeUser(newUser),
+    user: sanitizeUser(newUser, { id: newUser.id, role: newUser.role }),
   };
 }
 
@@ -54,7 +50,7 @@ export async function login({ username, password }) {
   const token = signToken(user);
   return {
     token,
-    user: sanitizeUser(user),
+    user: sanitizeUser(user, { id: user.id, role: user.role }),
   };
 }
 
@@ -63,5 +59,5 @@ export async function me(userId) {
   if (!user) {
     throw new NotFound('Tài khoản không tồn tại');
   }
-  return sanitizeUser(user);
+  return sanitizeUser(user, { id: user.id, role: user.role });
 }

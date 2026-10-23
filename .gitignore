@@ -28,6 +28,7 @@ data/audit.ndjson
 database/data/*.csv
 database/data/*.json
 database/data/*.rdb
+database/data/exports/
 !database/data/.gitkeep
 falkordb_data/
 benchmark/results/*.json
