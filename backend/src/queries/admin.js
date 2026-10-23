@@ -1,4 +1,6 @@
 export const admin = {
+  countAllNodes: `MATCH (n) RETURN count(n) AS c`,
+  countAllEdges: `MATCH ()-[r]->() RETURN count(r) AS c`,
   countByLabel: `MATCH (n) RETURN labels(n)[0] AS label, count(n) AS c`,
   countByType:  `MATCH ()-[r]->() RETURN type(r) AS type, count(r) AS c`,
   degreeBuckets: `MATCH (u:User) OPTIONAL MATCH (u)<-[:FOLLOWS]-(f:User)

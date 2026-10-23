@@ -28,7 +28,7 @@ export const posts = {
 
   findById: `MATCH (a:User)-[:POSTED]->(p:Post {id:$id})
     OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
-    RETURN p, a.id AS authorId, a.username AS authorUsername, collect(t.name) AS topics`,
+    RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName, collect(t.name) AS topics`,
 
   update:       `MATCH (p:Post {id:$id}) SET p.content=$content RETURN p`,
   clearTopics:  `MATCH (:Post {id:$id})-[r:ABOUT]->(:Topic) DELETE r`,

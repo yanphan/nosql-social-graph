@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const file = path.resolve('data/audit.ndjson');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const file = path.resolve(__dirname, '../../data/audit.ndjson');
 
 export function audit(req, res, next) {
   res.on('finish', () => {
