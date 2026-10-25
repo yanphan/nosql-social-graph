@@ -8,39 +8,54 @@ export function installMock(http) {
   console.log('⚡ Mock Mode Enabled (VITE_USE_MOCK=true)');
   const m = new MockAdapter(http, { delayResponse: 350 });
 
+  const mockUsersList = [
+    { id: 'usr_admin', username: 'admin', fullName: 'Quản trị viên', role: 'admin', followers: 48, bio: 'Quản trị viên hệ thống FalkorDB Social' },
+    { id: 'usr_analyst', username: 'analyst', fullName: 'Nhà phân tích', role: 'analyst', followers: 32, bio: 'Chuyên viên phân tích đồ thị mạng xã hội' },
+    { id: 'usr_alice', username: 'alice', fullName: 'Alice Nguyen', role: 'user', followers: 42, bio: 'Kỹ sư phần mềm đam mê CSDL NoSQL' },
+    { id: 'usr_david', username: 'david', fullName: 'David Pham', role: 'user', followers: 35, bio: 'Nghiên cứu viên trí tuệ nhân tạo' },
+    { id: 'usr_bob', username: 'bob', fullName: 'Bob Le', role: 'user', followers: 22, bio: 'Sinh viên ngành Khoa học dữ liệu' },
+    { id: 'usr_charlie', username: 'charlie', fullName: 'Charlie Tran', role: 'user', followers: 28, bio: 'Lập trình viên backend & kiến trúc phân tán' },
+    { id: 'usr_eva', username: 'eva', fullName: 'Eva Hoang', role: 'user', followers: 19, bio: 'UX/UI Designer & trực quan hóa đồ thị' },
+    { id: 'usr_frank', username: 'frank', fullName: 'Frank Vu', role: 'user', followers: 16, bio: 'Chuyên gia bảo mật mạng' },
+  ];
+
+  let savedUser = null;
+  try {
+    savedUser = JSON.parse(localStorage.getItem('social_user'));
+  } catch {}
+
+  let currentUser = savedUser || mockUsersList[0];
+
   // Auth mock
   m.onPost('/auth/login').reply((config) => {
     const { username } = JSON.parse(config.data || '{}');
-    const role = username === 'admin' ? 'admin' : username === 'analyst' ? 'analyst' : 'user';
-    const fullName =
-      username === 'admin'
-        ? 'Quản trị viên'
-        : username === 'analyst'
-        ? 'Nhà phân tích'
-        : 'Alice Nguyen';
+    const matched = mockUsersList.find((u) => u.username === username);
+    const role = matched?.role || (username === 'admin' ? 'admin' : username === 'analyst' ? 'analyst' : 'user');
+    const fullName = matched?.fullName || (username === 'admin' ? 'Quản trị viên' : username === 'analyst' ? 'Nhà phân tích' : username);
+
+    currentUser = {
+      id: matched?.id || `usr_${username || 'admin'}`,
+      username: username || 'admin',
+      fullName,
+      role,
+      status: 'active',
+      bio: matched?.bio || 'Tài khoản thử nghiệm mock mode',
+    };
 
     return ok({
       token: 'mock_jwt_token_sample_123',
-      user: {
-        id: `usr_${username || 'alice'}`,
-        username: username || 'alice',
-        fullName,
-        role,
-        status: 'active',
-        bio: 'Tài khoản thử nghiệm mock mode',
-      },
+      user: currentUser,
     });
   });
 
-  m.onGet('/auth/me').reply(() =>
-    ok({
-      id: 'usr_alice',
-      username: 'alice',
-      fullName: 'Alice Nguyen',
-      role: 'user',
-      status: 'active',
-      bio: 'Tài khoản thử nghiệm mock mode',
-    })
+  m.onGet('/auth/me').reply(() => ok(currentUser));
+
+  // Users list
+  m.onGet('/users').reply(() => ok({ items: mockUsersList, total: mockUsersList.length }));
+
+  // Recommendations
+  m.onGet('/recommend/friends').reply(() =>
+    ok(mockUsersList.filter((u) => u.username !== currentUser.username).slice(0, 5))
   );
 
   // Health
@@ -52,31 +67,75 @@ export function installMock(http) {
   // UC-04: Subgraph
   m.onGet('/graph/subgraph').reply(() => ok(graphFixture));
 
-  // Posts Feed
+  // Posts Feed with multiple users
   m.onGet('/posts').reply(() =>
     ok({
       items: [
         {
-          id: 'post_mock_1',
-          content: 'Chào mừng các bạn đến với hệ thống mạng xã hội đồ thị FalkorDB!',
-          createdAt: Date.now() - 3600000,
-          likeCount: 12,
-          commentCount: 3,
-          shareCount: 2,
+          id: 'post_1',
+          content: 'Chào mừng các bạn đến với hệ thống mạng xã hội đồ thị FalkorDB! Quy mô dữ liệu hiện tại đã sinh hơn 1.000 người dùng và 5.000 bài viết.',
+          createdAt: Date.now() - 1800000,
+          likeCount: 24,
+          commentCount: 6,
+          shareCount: 4,
           likedByMe: true,
           author: { id: 'usr_admin', username: 'admin', fullName: 'Quản trị viên' },
           topics: ['nosql', 'ai'],
         },
         {
-          id: 'post_mock_2',
-          content: 'Thuật toán shortestPath trên đồ thị với độ phức tạp tối ưu hơn hẳn CTE trong RDBMS.',
-          createdAt: Date.now() - 7200000,
-          likeCount: 8,
-          commentCount: 1,
-          shareCount: 0,
+          id: 'post_2',
+          content: 'Thuật toán shortestPath trên đồ thị với độ phức tạp tối ưu hơn hẳn CTE trong RDBMS khi duyệt sâu từ 3 đến 6 bước nhảy.',
+          createdAt: Date.now() - 3600000,
+          likeCount: 18,
+          commentCount: 4,
+          shareCount: 2,
           likedByMe: false,
           author: { id: 'usr_alice', username: 'alice', fullName: 'Alice Nguyen' },
           topics: ['nosql'],
+        },
+        {
+          id: 'post_3',
+          content: 'Vừa hoàn thành chạy thực nghiệm phân tích cộng đồng bằng thuật toán WCC (Weakly Connected Components) trên 120.000 quan hệ FOLLOWS!',
+          createdAt: Date.now() - 7200000,
+          likeCount: 31,
+          commentCount: 9,
+          shareCount: 7,
+          likedByMe: true,
+          author: { id: 'usr_david', username: 'david', fullName: 'David Pham' },
+          topics: ['ai', 'technology'],
+        },
+        {
+          id: 'post_4',
+          content: 'Kết quả đo kiểm tải đồng thời với 100 kết nối song song: FalkorDB đạt thông lượng hơn 8.200 req/s, độ trễ P95 chỉ 14.8ms.',
+          createdAt: Date.now() - 14400000,
+          likeCount: 42,
+          commentCount: 12,
+          shareCount: 11,
+          likedByMe: false,
+          author: { id: 'usr_charlie', username: 'charlie', fullName: 'Charlie Tran' },
+          topics: ['technology'],
+        },
+        {
+          id: 'post_5',
+          content: 'Cơ chế sao lưu snapshot RDB kết hợp backup logic JSON đảm bảo khả năng phục hồi thảm họa với tỷ lệ đối chiếu Parity 100%.',
+          createdAt: Date.now() - 28800000,
+          likeCount: 15,
+          commentCount: 2,
+          shareCount: 3,
+          likedByMe: false,
+          author: { id: 'usr_bob', username: 'bob', fullName: 'Bob Le' },
+          topics: ['nosql'],
+        },
+        {
+          id: 'post_6',
+          content: 'Đã cập nhật giao diện trực quan hóa đồ thị mạng xã hội với Cytoscape.js và thuật toán bố cục fCoSE mượt mà trên trình duyệt Edge.',
+          createdAt: Date.now() - 43200000,
+          likeCount: 27,
+          commentCount: 5,
+          shareCount: 6,
+          likedByMe: true,
+          author: { id: 'usr_eva', username: 'eva', fullName: 'Eva Hoang' },
+          topics: ['technology', 'ai'],
         },
       ],
       page: 1,
