@@ -19,6 +19,11 @@ export async function createApp() {
     morgan('dev')
   );
 
+  // Root route: Tự động chuyển hướng sang giao diện Frontend (port 5173)
+  app.get('/', (_req, res) => {
+    res.redirect('http://localhost:5173');
+  });
+
   // Health check endpoint
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, data: { db: 'up', graph: env.db.graph } });
