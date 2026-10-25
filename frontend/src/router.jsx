@@ -5,6 +5,11 @@ import Feed from './pages/Feed';
 import PathFinder from './pages/PathFinder';
 import Explore from './pages/Explore';
 import PlaceholderPage from './pages/PlaceholderPage';
+import Analytics from './pages/Analytics';
+import Dashboard from './pages/Dashboard';
+import AdminData from './pages/admin/AdminData';
+import AdminBackup from './pages/admin/AdminBackup';
+import AdminAudit from './pages/admin/AdminAudit';
 import { useAuth } from './store/auth';
 
 function ProtectedRoute({ children, allowedRoles }) {
@@ -70,11 +75,7 @@ export const router = createBrowserRouter([
         path: 'analytics',
         element: (
           <ProtectedRoute allowedRoles={['analyst', 'admin']}>
-            <PlaceholderPage
-              title="BT5: Phân tích ảnh hưởng & Lan truyền"
-              description="Xếp hạng PageRank, phát hiện cộng đồng WCC và truy vết cây lan truyền chia sẻ."
-              sprint="Sprint 2 - 3"
-            />
+            <Analytics />
           </ProtectedRoute>
         ),
       },
@@ -82,11 +83,7 @@ export const router = createBrowserRouter([
         path: 'dashboard',
         element: (
           <ProtectedRoute allowedRoles={['analyst', 'admin']}>
-            <PlaceholderPage
-              title="Thống kê tổng quan & Bậc mạng lưới"
-              description="Tổng quan quy mô node/edge, phân phối bậc và nhật ký hoạt động hệ thống."
-              sprint="Sprint 3"
-            />
+            <Dashboard />
           </ProtectedRoute>
         ),
       },
@@ -118,11 +115,7 @@ export const router = createBrowserRouter([
         path: 'admin/data',
         element: (
           <ProtectedRoute allowedRoles={['admin']}>
-            <PlaceholderPage
-              title="Nhập / Xuất dữ liệu & Kiểm tra toàn vẹn"
-              description="Import/Export CSV/JSON, chạy kiểm tra 9 ràng buộc toàn vẹn dữ liệu."
-              sprint="Sprint 3"
-            />
+            <AdminData />
           </ProtectedRoute>
         ),
       },
@@ -130,11 +123,7 @@ export const router = createBrowserRouter([
         path: 'admin/backup',
         element: (
           <ProtectedRoute allowedRoles={['admin']}>
-            <PlaceholderPage
-              title="Sao lưu & Phục hồi CSDL"
-              description="Quy trình 4 bước: Sao lưu -> Xóa trắng đồ thị -> Phục hồi -> Đối chiếu số node/cạnh."
-              sprint="Sprint 3"
-            />
+            <AdminBackup />
           </ProtectedRoute>
         ),
       },
@@ -142,11 +131,7 @@ export const router = createBrowserRouter([
         path: 'admin/audit',
         element: (
           <ProtectedRoute allowedRoles={['admin']}>
-            <PlaceholderPage
-              title="Nhật ký thao tác hệ thống (Audit Log)"
-              description="Theo dõi toàn bộ lịch sử các tác vụ ghi (POST/PUT/PATCH/DELETE) trên hệ thống."
-              sprint="Sprint 3"
-            />
+            <AdminAudit />
           </ProtectedRoute>
         ),
       },

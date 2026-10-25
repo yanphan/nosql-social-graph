@@ -90,17 +90,19 @@ export async function loadScale(scaleKey = 'S') {
 }
 
 // CLI runner
-const scaleArg = (process.argv[2] || 'S').toUpperCase();
-loadScale(scaleArg)
-  .then((report) => {
-    if (!report.allIntegrityPassed) {
-      console.error('Data load completed with integrity check violations!');
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const scaleArg = (process.argv[2] || 'S').toUpperCase();
+  loadScale(scaleArg)
+    .then((report) => {
+      if (!report.allIntegrityPassed) {
+        console.error('Data load completed with integrity check violations!');
+        process.exit(1);
+      }
+      console.log('✅ Load scale completed successfully with 100% integrity pass.');
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('Fatal load error:', err);
       process.exit(1);
-    }
-    console.log('✅ Load scale completed successfully with 100% integrity pass.');
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error('Fatal load error:', err);
-    process.exit(1);
-  });
+    });
+}
