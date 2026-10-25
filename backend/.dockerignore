@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+.git
+.vscode
+.env
+data/audit.ndjson
+tests
+coverage
