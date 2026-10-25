@@ -2,34 +2,49 @@ import { read, write } from '../db/graph.js';
 import { admin } from '../queries/admin.js';
 
 export async function stats() {
-  const [nodeCounts, edgeCounts] = await Promise.all([
+  const [nodesRows, edgesRows, degreeRows] = await Promise.all([
     read(admin.countByLabel),
     read(admin.countByType),
+    read(admin.degreeBuckets),
   ]);
 
   const nodes = {};
   let totalNodes = 0;
-  for (const r of nodeCounts) {
-    const label = r.label || 'Unknown';
-    const c = Number(r.c ?? 0);
-    nodes[label] = c;
-    totalNodes += c;
+  for (const r of nodesRows) {
+    if (r.label) {
+      const c = Number(r.c ?? 0);
+      nodes[r.label] = c;
+      totalNodes += c;
+    }
   }
 
   const edges = {};
   let totalEdges = 0;
-  for (const r of edgeCounts) {
-    const type = r.type || 'Unknown';
-    const c = Number(r.c ?? 0);
-    edges[type] = c;
-    totalEdges += c;
+  for (const r of edgesRows) {
+    if (r.type) {
+      const c = Number(r.c ?? 0);
+      edges[r.type] = c;
+      totalEdges += c;
+    }
   }
+
+  const degreeBucketsList = degreeRows.map((r) => ({
+    degree: Number(r.degree ?? 0),
+    users: Number(r.users ?? 0),
+  }));
+
+  const userCount = nodes['User'] ?? 0;
+  let scale = 'S';
+  if (userCount >= 100_000) scale = 'L';
+  else if (userCount >= 10_000) scale = 'M';
 
   return {
     totalNodes,
     totalEdges,
     nodes,
     edges,
+    degreeBuckets: degreeBucketsList,
+    scale,
   };
 }
 

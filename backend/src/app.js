@@ -24,6 +24,12 @@ export async function createApp() {
     res.json({ ok: true, data: { db: 'up', graph: env.db.graph } });
   });
 
+  // Alias tương thích chuẩn spec GET /benchmark -> /api/benchmark
+  app.get('/benchmark', (req, res, next) => {
+    req.url = '/api/benchmark';
+    app.handle(req, res, next);
+  });
+
   // Tự động nạp mọi routes/*.routes.js
   const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'routes');
   if (fs.existsSync(dir)) {
