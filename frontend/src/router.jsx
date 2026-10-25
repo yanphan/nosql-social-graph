@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import AdminData from './pages/admin/AdminData';
 import AdminBackup from './pages/admin/AdminBackup';
 import AdminAudit from './pages/admin/AdminAudit';
+import Benchmark from './pages/Benchmark';
 import { useAuth } from './store/auth';
 
 function ProtectedRoute({ children, allowedRoles }) {
@@ -84,6 +85,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute allowedRoles={['analyst', 'admin']}>
             <Dashboard />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'benchmark',
+        element: (
+          <ProtectedRoute allowedRoles={['analyst', 'admin']}>
+            <Benchmark />
           </ProtectedRoute>
         ),
       },

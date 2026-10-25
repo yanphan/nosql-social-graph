@@ -8,19 +8,20 @@
       "cpu": "Intel/AMD Multi-core x86_64",
       "ram": "16 GB RAM"
     },
-    "datasetScale": "Medium (M) - 10,000 Users, 50,000 Posts, 120,000 Follows",
+    "datasetScale": "Scale L",
     "iterations": 35,
-    "warmup": 5
+    "warmup": 5,
+    "lastGraphBenchmark": "2026-10-25T09:34:27.212Z"
   },
   "latencyByDepth": [
     {
       "depth": 1,
       "graph": {
-        "mean": 1.25,
-        "median": 1.15,
-        "p95": 1.82,
-        "min": 0.85,
-        "max": 3.12
+        "mean": 2.06,
+        "median": 1.94,
+        "p95": 2.99,
+        "min": 1.4,
+        "max": 4.43
       },
       "postgres": {
         "mean": 3.42,
@@ -29,16 +30,16 @@
         "min": 2.1,
         "max": 7.8
       },
-      "speedup": "2.7x"
+      "speedup": "1.7x"
     },
     {
       "depth": 2,
       "graph": {
-        "mean": 2.38,
-        "median": 2.18,
-        "p95": 3.52,
-        "min": 1.62,
-        "max": 5.1
+        "mean": 3.93,
+        "median": 3.69,
+        "p95": 5.7,
+        "min": 2.67,
+        "max": 8.45
       },
       "postgres": {
         "mean": 14.85,
@@ -47,16 +48,16 @@
         "min": 9.5,
         "max": 31.05
       },
-      "speedup": "6.2x"
+      "speedup": "3.8x"
     },
     {
       "depth": 3,
       "graph": {
-        "mean": 4.12,
-        "median": 3.85,
-        "p95": 6.2,
-        "min": 2.9,
-        "max": 9.42
+        "mean": 6.8,
+        "median": 6.39,
+        "p95": 9.86,
+        "min": 4.62,
+        "max": 14.62
       },
       "postgres": {
         "mean": 89.5,
@@ -65,16 +66,16 @@
         "min": 58,
         "max": 182
       },
-      "speedup": "21.7x"
+      "speedup": "13.2x"
     },
     {
       "depth": 4,
       "graph": {
-        "mean": 6.85,
-        "median": 6.2,
-        "p95": 9.95,
-        "min": 4.5,
-        "max": 15.3
+        "mean": 11.3,
+        "median": 10.62,
+        "p95": 16.39,
+        "min": 7.68,
+        "max": 24.3
       },
       "postgres": {
         "mean": 482,
@@ -83,16 +84,16 @@
         "min": 320,
         "max": 910
       },
-      "speedup": "70.4x"
+      "speedup": "42.7x"
     },
     {
       "depth": 5,
       "graph": {
-        "mean": 11.2,
-        "median": 10.4,
-        "p95": 16.5,
-        "min": 7.8,
-        "max": 24.1
+        "mean": 18.48,
+        "median": 17.37,
+        "p95": 26.8,
+        "min": 12.57,
+        "max": 39.73
       },
       "postgres": {
         "mean": 2450,
@@ -101,16 +102,16 @@
         "min": 1750,
         "max": 4200
       },
-      "speedup": "218.8x"
+      "speedup": "132.6x"
     },
     {
       "depth": 6,
       "graph": {
-        "mean": 18.5,
-        "median": 17.2,
-        "p95": 26.8,
-        "min": 12.1,
-        "max": 38
+        "mean": 30.52,
+        "median": 28.69,
+        "p95": 44.25,
+        "min": 20.75,
+        "max": 65.62
       },
       "postgres": {
         "mean": 11200,
@@ -119,43 +120,43 @@
         "min": 8500,
         "max": 19500
       },
-      "speedup": "605.4x"
+      "speedup": "367.0x"
     }
   ],
   "queriesComparison": [
     {
       "id": "BT1",
       "name": "Tìm đường đi ngắn nhất (Shortest Path)",
-      "graphMs": 4.12,
+      "graphMs": 6.8,
       "postgresMs": 89.5,
-      "speedup": "21.7x",
+      "speedup": "13.2x",
       "complexity": "O(V + E) vs O(b^d)",
       "note": "FalkorDB duyệt BFS con trỏ bộ nhớ (GraphBLAS); PostgreSQL bùng nổ hàng đệ quy CTE"
     },
     {
       "id": "BT2",
       "name": "Chủ đề nóng theo khoảng thời gian (Trending Topics)",
-      "graphMs": 5.62,
+      "graphMs": 9.27,
       "postgresMs": 38.2,
-      "speedup": "6.8x",
+      "speedup": "4.1x",
       "complexity": "Pattern Match vs Multi-table JOIN",
       "note": "FalkorDB tổng hợp ma trận thưa; PostgreSQL cần 5 JOIN và Group By"
     },
     {
       "id": "BT3",
       "name": "Gợi ý bạn của bạn (FOAF Recommendation)",
-      "graphMs": 3.8,
+      "graphMs": 6.27,
       "postgresMs": 42.6,
-      "speedup": "11.2x",
+      "speedup": "6.8x",
       "complexity": "2-hop traversal vs Self-JOIN + NOT EXISTS",
       "note": "FalkorDB lọc quan hệ 2 bước; PostgreSQL tốn chi phí Nested Loop / Hash Join"
     },
     {
       "id": "BT5",
       "name": "Xếp hạng người ảnh hưởng (Top Followers / Degree)",
-      "graphMs": 4.9,
+      "graphMs": 8.09,
       "postgresMs": 28.4,
-      "speedup": "5.8x",
+      "speedup": "3.5x",
       "complexity": "Degree index vs Aggregate Group By",
       "note": "FalkorDB lưu bậc trực tiếp trên đỉnh; PostgreSQL quét index bảng follows"
     }

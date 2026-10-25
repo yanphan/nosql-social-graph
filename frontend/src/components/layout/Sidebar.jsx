@@ -13,6 +13,7 @@ import {
   ExternalLink,
   History,
   Activity,
+  Gauge,
 } from 'lucide-react';
 import { useAuth } from '../../store/auth';
 
@@ -31,6 +32,7 @@ export default function Sidebar() {
   const analystNav = [
     { to: '/analytics', label: 'Phân tích mạng lưới (BT5)', icon: BarChart3 },
     { to: '/dashboard', label: 'Thống kê tổng quan', icon: Activity },
+    { to: '/benchmark', label: 'Hiệu năng & So sánh CSDL', icon: Gauge },
   ];
 
   const adminNav = [
