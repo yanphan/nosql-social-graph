@@ -149,23 +149,21 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* FalkorDB Browser link for Analyst and Admin */}
-      {(role === 'analyst' || role === 'admin') && (
-        <div className="pt-3 border-t border-surfaceBorder mt-2">
-          <a
-            href={browserUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs bg-topic/10 text-topic hover:bg-topic/20 transition-all font-medium border border-topic/30"
-          >
-            <span className="flex items-center gap-2">
-              <Database className="w-4 h-4" />
-              Mở FalkorDB Browser
-            </span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        </div>
-      )}
+      {/* FalkorDB Browser link - First-class citizen for thesis demonstration */}
+      <div className="pt-3 border-t border-surfaceBorder mt-2">
+        <a
+          href={browserUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs bg-topic/10 text-topic hover:bg-topic/20 transition-all font-medium border border-topic/30"
+        >
+          <span className="flex items-center gap-2">
+            <Database className="w-4 h-4" />
+            Mở FalkorDB Browser
+          </span>
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      </div>
     </aside>
   );
 }

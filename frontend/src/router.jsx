@@ -4,7 +4,10 @@ import Login from './pages/Login';
 import Feed from './pages/Feed';
 import PathFinder from './pages/PathFinder';
 import Explore from './pages/Explore';
-import PlaceholderPage from './pages/PlaceholderPage';
+import Trending from './pages/Trending';
+import Discover from './pages/Discover';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminTopics from './pages/admin/AdminTopics';
 import Analytics from './pages/Analytics';
 import Dashboard from './pages/Dashboard';
 import AdminData from './pages/admin/AdminData';
@@ -54,23 +57,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'trending',
-        element: (
-          <PlaceholderPage
-            title="BT2: Chủ đề nóng (Trending Topics)"
-            description="Thống kê các chủ đề có lượng tương tác Like/Comment/Share cao nhất theo mốc 1, 7, 30 ngày."
-            sprint="Sprint 2"
-          />
-        ),
+        element: <Trending />,
       },
       {
         path: 'discover',
-        element: (
-          <PlaceholderPage
-            title="BT3 & BT4: Gợi ý bạn bè & Bài viết"
-            description="Tìm bạn chung (FOAF), gợi ý kết nối và phân phối bài viết theo điểm sở thích."
-            sprint="Sprint 2"
-          />
-        ),
+        element: <Discover />,
       },
       {
         path: 'analytics',
@@ -100,11 +91,7 @@ export const router = createBrowserRouter([
         path: 'admin/users',
         element: (
           <ProtectedRoute allowedRoles={['admin']}>
-            <PlaceholderPage
-              title="Quản trị người dùng"
-              description="Danh sách tài khoản, tạo mới, khóa/mở khóa tài khoản và phân quyền."
-              sprint="Sprint 1"
-            />
+            <AdminUsers />
           </ProtectedRoute>
         ),
       },
@@ -112,11 +99,7 @@ export const router = createBrowserRouter([
         path: 'admin/topics',
         element: (
           <ProtectedRoute allowedRoles={['admin']}>
-            <PlaceholderPage
-              title="Quản trị chủ đề"
-              description="Thêm, sửa, xóa các nhãn chủ đề và danh mục quan tâm."
-              sprint="Sprint 1"
-            />
+            <AdminTopics />
           </ProtectedRoute>
         ),
       },
