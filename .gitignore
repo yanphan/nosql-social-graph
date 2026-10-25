@@ -29,6 +29,8 @@ database/data/*.csv
 database/data/*.json
 database/data/*.rdb
 database/data/exports/
+database/data/backups/
+database/data/physical-backups/
 !database/data/.gitkeep
 falkordb_data/
 benchmark/results/*.json
