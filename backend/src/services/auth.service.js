@@ -47,10 +47,16 @@ export async function login({ username, password }) {
     throw new Unauth('Tên đăng nhập hoặc mật khẩu không chính xác');
   }
 
+  const stats = await usersRepo.profileStats(user.id);
   const token = signToken(user);
   return {
     token,
-    user: sanitizeUser(user, { id: user.id, role: user.role }),
+    user: {
+      ...sanitizeUser(user, { id: user.id, role: user.role }),
+      followersCount: stats?.followers ?? 0,
+      followingCount: stats?.following ?? 0,
+      postsCount: stats?.posts ?? 0,
+    },
   };
 }
 
@@ -59,5 +65,11 @@ export async function me(userId) {
   if (!user) {
     throw new NotFound('Tài khoản không tồn tại');
   }
-  return sanitizeUser(user, { id: user.id, role: user.role });
+  const stats = await usersRepo.profileStats(userId);
+  return {
+    ...sanitizeUser(user, { id: user.id, role: user.role }),
+    followersCount: stats?.followers ?? 0,
+    followingCount: stats?.following ?? 0,
+    postsCount: stats?.posts ?? 0,
+  };
 }
