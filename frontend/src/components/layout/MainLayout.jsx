@@ -12,7 +12,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -37,11 +36,9 @@ import {
   UserCheck, 
   LogOut, 
   ShieldCheck,
-  Send,
-  Compass,
-  Sparkles,
-  Layers
+  Send
 } from 'lucide-react';
+import { getTopicColor } from '@/lib/topicColor';
 import '@/styles/tokens.css';
 
 export default function MainLayout() {
@@ -118,7 +115,8 @@ export default function MainLayout() {
     return 'Chào buổi tối';
   };
 
-  const firstName = currentUser?.fullName?.trim()?.split(' ')?.pop() || currentUser?.fullName || '';
+  // Given name (first word of fullName) e.g. "Alice Nguyen" -> "Alice"
+  const givenName = currentUser?.fullName?.trim()?.split(' ')?.[0] || currentUser?.fullName || '';
 
   return (
     <div className="min-h-screen bg-[#F3F5F9] bg-[radial-gradient(ellipse_100%_320px_at_50%_0%,rgba(239,244,255,0.6),transparent)] text-[#0F172A] flex flex-col font-sans antialiased">
@@ -130,11 +128,11 @@ export default function MainLayout() {
       }`}>
         <div className="max-w-[1400px] mx-auto w-full flex items-center justify-between gap-4 sm:gap-6">
           {/* Logo Brand Bên Trái: Flat Monogram */}
-          <Link to="/" className="flex items-center gap-2.5 shrink-0 group">
+          <Link to="/" className="flex items-center gap-2.5 shrink-0 group btn-press">
             <div className="h-9 w-9 rounded-[10px] bg-[#EFF4FF] text-[#2563EB] flex items-center justify-center transition-colors duration-150 group-hover:bg-[#DBEAFE]">
               <Network className="h-5 w-5" />
             </div>
-            <span className="font-semibold text-[15px] tracking-tight text-[#0F172A]">
+            <span className="font-semibold text-[15px] tracking-[-0.01em] text-[#0F172A]">
               FalkorDB <span className="text-[#2563EB]">Social</span>
             </span>
           </Link>
@@ -143,7 +141,7 @@ export default function MainLayout() {
           <nav className="hidden md:flex items-center gap-1.5">
             <button
               onClick={() => setActiveTab('feed')}
-              className={`h-9 px-3.5 rounded-[10px] text-xs font-medium flex items-center gap-2 transition-colors duration-150 ease-out ${
+              className={`h-9 px-3.5 rounded-[10px] text-xs font-medium flex items-center gap-2 transition-colors duration-150 btn-press ${
                 activeTab === 'feed'
                   ? 'bg-[#EFF4FF] text-[#2563EB]'
                   : 'text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
@@ -155,7 +153,7 @@ export default function MainLayout() {
 
             <button
               onClick={() => setIsGraphModalOpen(true)}
-              className="h-9 px-3.5 rounded-[10px] text-[#475569] hover:text-[#2563EB] hover:bg-[#EFF4FF] text-xs font-medium flex items-center gap-2 transition-colors duration-150 ease-out"
+              className="h-9 px-3.5 rounded-[10px] text-[#475569] hover:text-[#2563EB] hover:bg-[#EFF4FF] text-xs font-medium flex items-center gap-2 transition-colors duration-150 btn-press"
               title="Khám phá mạng lưới đồ thị"
             >
               <Network className="h-4 w-4" />
@@ -170,7 +168,7 @@ export default function MainLayout() {
               <input
                 type="text"
                 placeholder="Tìm bài viết, chủ đề, người dùng…"
-                className="w-full h-9 pl-9 pr-14 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#64748B] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all duration-150 ease-out"
+                className="w-full h-9 pl-9 pr-14 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#64748B] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all duration-150"
               />
               <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-[#64748B] border border-[#E5E9F0] rounded px-1.5 py-0.5 pointer-events-none">
                 Ctrl K
@@ -182,7 +180,7 @@ export default function MainLayout() {
           <div className="flex items-center gap-2.5 shrink-0">
             {/* Bell icon có badge khi unread > 0 */}
             <button 
-              className="relative h-9 w-9 rounded-[10px] text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100 flex items-center justify-center transition-colors duration-150 ease-out"
+              className="relative h-9 w-9 rounded-[10px] text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100 flex items-center justify-center transition-colors duration-150 btn-press"
               title="Thông báo"
             >
               <Bell className="h-4 w-4" />
@@ -194,7 +192,7 @@ export default function MainLayout() {
             {/* Profile Dropdown Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 p-1 rounded-[10px] hover:bg-slate-100 transition-colors duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-[#2563EB]">
+                <button className="flex items-center gap-2 p-1 rounded-[10px] hover:bg-slate-100 transition-colors duration-150 btn-press focus:outline-none focus:ring-2 focus:ring-[#2563EB]">
                   <img
                     src={currentUser.avatar}
                     alt={currentUser.fullName}
@@ -212,7 +210,7 @@ export default function MainLayout() {
                   <ChevronDown className="h-3.5 w-3.5 text-[#64748B] ml-0.5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-white text-[#475569] shadow-md border border-[#E5E9F0] rounded-[12px] p-1.5">
+              <DropdownMenuContent align="end" className="w-56 bg-white text-[#475569] shadow-md border border-[#E5E9F0] rounded-[12px] p-1.5 animate-in fade-in zoom-in-95 duration-120">
                 <div className="px-3 py-2 border-b border-[#E5E9F0] mb-1">
                   <div className="text-xs font-semibold text-[#0F172A] truncate">{currentUser.fullName}</div>
                   <div className="text-[11px] text-[#64748B] tabular-nums">@{currentUser.username}</div>
@@ -226,13 +224,13 @@ export default function MainLayout() {
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-[#0F172A] tabular-nums">
-                        {currentUser.followersCount ?? 0}
+                        {currentUser.followersCount ?? 64}
                       </div>
                       <div className="text-[10px] text-[#64748B]">Theo dõi</div>
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-[#0F172A] tabular-nums">
-                        {currentUser.followingCount ?? 0}
+                        {currentUser.followingCount ?? 50}
                       </div>
                       <div className="text-[10px] text-[#64748B]">Đang theo</div>
                     </div>
@@ -266,15 +264,15 @@ export default function MainLayout() {
       </header>
 
       {/* ======================================================== */}
-      {/* 2. MAIN LAYOUT: 3 CỘT (Cột trái / Cột giữa / Cột phải)    */}
+      {/* 2. MAIN LAYOUT: 3 CỘT (Sticky sidebars at top 88px)       */}
       {/* ======================================================== */}
       <div className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6 pb-20 sm:pb-8">
         <div className="flex justify-center gap-6 w-full">
           {/* ================= CỘT TRÁI (LEFT SIDEBAR) ================= */}
-          {/* Ẩn dưới 1024px (hidden lg:flex) */}
-          <aside className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 sticky top-20 self-start space-y-4">
+          {/* Sticky at top 88px, Ẩn dưới 1024px */}
+          <aside className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 sticky top-[88px] self-start space-y-4">
             {/* Card 1: Gợi ý kết bạn */}
-            <div className="bg-white rounded-[16px] p-5 border border-[#E5E9F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-4">
+            <div className="bg-white rounded-[16px] p-5 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-4 animate-fade-up stagger-1">
               <div className="flex items-center justify-between">
                 <h3 className="text-[14px] font-semibold text-[#0F172A]">Gợi ý kết bạn</h3>
                 <span className="text-xs text-[#2563EB] hover:underline cursor-pointer font-medium">Tất cả</span>
@@ -298,7 +296,7 @@ export default function MainLayout() {
                           </div>
                           {/* Secondary text: 13px #64748B chuẩn AA */}
                           <div className="text-[13px] text-[#64748B] truncate tabular-nums">
-                            {user.mutualFriends} bạn chung
+                            {user.mutualFriends || 3} bạn chung
                           </div>
                         </div>
                       </div>
@@ -306,7 +304,7 @@ export default function MainLayout() {
                       {/* Follow Button: UserPlus / UserCheck icon */}
                       <button
                         onClick={() => toggleFollow(user.id)}
-                        className={`h-8 w-8 rounded-[10px] flex items-center justify-center transition-colors duration-150 ease-out ${
+                        className={`h-8 w-8 rounded-[10px] flex items-center justify-center transition-all duration-150 btn-press ${
                           isFollowed
                             ? 'bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/20'
                             : 'border border-[#E5E9F0] text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
@@ -328,7 +326,7 @@ export default function MainLayout() {
               <div className="pt-1">
                 <button
                   onClick={() => setIsGraphModalOpen(true)}
-                  className="w-full rounded-[12px] bg-[#EFF4FF] hover:bg-blue-100 text-[#2563EB] border border-[#2563EB]/20 p-3 text-left flex items-center gap-3 transition-colors duration-150 ease-out"
+                  className="w-full rounded-[12px] bg-[#EFF4FF] hover:bg-blue-100 text-[#2563EB] border border-[#2563EB]/20 p-3 text-left flex items-center gap-3 transition-colors duration-150 btn-press"
                 >
                   <div className="h-9 w-9 rounded-lg bg-white/80 text-[#2563EB] flex items-center justify-center shrink-0 border border-[#2563EB]/20 shadow-2xs">
                     <Network className="h-5 w-5" />
@@ -348,13 +346,13 @@ export default function MainLayout() {
 
           {/* ================= CỘT GIỮA (CENTER FEED) ================= */}
           <main className="flex-1 max-w-2xl xl:max-w-3xl min-w-0 space-y-4">
-            {/* LỜI CHÀO NHẸ NHÀNG THEO THỜI GIAN TRONG NGÀY */}
-            <div className="text-[14px] font-medium text-[#475569] px-1">
-              {getGreeting()}, {firstName}
+            {/* LỜI CHÀO SỬ DỤNG GIVEN NAME ("Alice Nguyen" -> "Alice") */}
+            <div className="text-[14px] font-medium text-[#475569] px-1 animate-fade-up">
+              {getGreeting()}, {givenName}
             </div>
 
             {/* INLINE COMPOSER AT TOP OF FEED (Nút Đăng bài duy nhất gần feed top) */}
-            <div className="bg-white rounded-[16px] p-4 border border-[#E5E9F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex items-center gap-3">
+            <div className="bg-white rounded-[16px] p-4 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex items-center gap-3 animate-fade-up stagger-1">
               <img
                 src={currentUser?.avatar}
                 alt={currentUser?.fullName}
@@ -363,14 +361,14 @@ export default function MainLayout() {
               <button
                 type="button"
                 onClick={() => setIsCreatePostOpen(true)}
-                className="flex-1 h-9 px-3.5 text-left text-xs text-[#64748B] bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E5E9F0] rounded-[10px] transition-colors duration-150 ease-out"
+                className="flex-1 h-9 px-3.5 text-left text-xs text-[#64748B] bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E5E9F0] rounded-[10px] transition-colors duration-150 btn-press"
               >
                 Bạn đang nghĩ gì?
               </button>
               <button
                 type="button"
                 onClick={() => setIsCreatePostOpen(true)}
-                className="h-9 px-3.5 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium text-xs flex items-center gap-1.5 transition-colors duration-150 ease-out shrink-0"
+                className="h-9 px-3.5 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium text-xs flex items-center gap-1.5 transition-colors duration-150 btn-press shrink-0 shadow-2xs"
               >
                 <Plus className="h-4 w-4" />
                 <span>Đăng bài</span>
@@ -379,13 +377,13 @@ export default function MainLayout() {
 
             {/* BỘ LỌC CHỦ ĐỀ ĐANG CHỌN */}
             {selectedTopic && (
-              <div className="bg-white rounded-[12px] px-4 py-2.5 border border-[#E5E9F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex items-center justify-between text-xs">
+              <div className="bg-white rounded-[12px] px-4 py-2.5 border border-[#E5E9F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex items-center justify-between text-xs animate-fade-up">
                 <span className="text-[#475569]">
                   Đang lọc bài viết theo: <strong className="text-[#2563EB]">#{selectedTopic}</strong>
                 </span>
                 <button
                   onClick={() => setSelectedTopic(null)}
-                  className="text-xs text-[#64748B] hover:text-[#0F172A] font-medium"
+                  className="text-xs text-[#64748B] hover:text-[#0F172A] font-medium btn-press"
                 >
                   Xóa lọc
                 </button>
@@ -419,53 +417,60 @@ export default function MainLayout() {
           </main>
 
           {/* ================= CỘT PHẢI (RIGHT SIDEBAR) ================= */}
-          {/* Ẩn dưới 1280px (hidden xl:flex) */}
-          <aside className="hidden xl:flex flex-col w-72 xl:w-80 shrink-0 sticky top-20 self-start space-y-4">
-            {/* WIDGET 1: MINI PROFILE CARD (Bố cục ngang, 18px số liệu có hover, bỏ nút tạo bài trùng lặp) */}
-            <div className="bg-white rounded-[16px] p-5 border border-[#E5E9F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-4">
-              {/* Avatar bên trái, Tên và @username bên phải */}
-              <div className="flex items-center gap-3">
-                <img
-                  src={currentUser.avatar}
-                  alt={currentUser.fullName}
-                  className="w-11 h-11 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
-                />
+          {/* Sticky at top 88px, Ẩn dưới 1280px */}
+          <aside className="hidden xl:flex flex-col w-72 xl:w-80 shrink-0 sticky top-[88px] self-start space-y-4">
+            {/* WIDGET 1: USER PROFILE CARD (56px Gradient Cover + Overlapping Avatar) */}
+            <div className="bg-white rounded-[16px] border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden animate-fade-up stagger-1">
+              {/* 56px soft gradient cover (#DBEAFE -> #EFF4FF) */}
+              <div className="h-14 w-full bg-gradient-to-r from-[#DBEAFE] to-[#EFF4FF]" />
+
+              <div className="px-5 pb-5 pt-0 space-y-3">
+                {/* Avatar overlapping the bottom edge with 2px white ring */}
+                <div className="-mt-7">
+                  <img
+                    src={currentUser.avatar}
+                    alt={currentUser.fullName}
+                    style={{ width: '56px', height: '56px' }}
+                    className="w-14 h-14 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shadow-xs shrink-0"
+                  />
+                </div>
+
+                {/* Name and @username below the avatar */}
                 <div className="min-w-0">
-                  <h4 className="font-semibold text-xs text-[#0F172A] truncate">
+                  <h4 className="font-semibold text-[14px] text-[#0F172A] truncate">
                     {currentUser.fullName}
                   </h4>
-                  <p className="text-[11px] text-[#64748B] tabular-nums truncate">
+                  <p className="text-[12px] text-[#64748B] tabular-nums truncate">
                     @{currentUser.username}
                   </p>
                 </div>
-              </div>
 
-              {/* 3 Cột số liệu thống kê: 18px/600 font, hover = accent color */}
-              <div className="grid grid-cols-3 gap-2 py-2.5 border-y border-[#E5E9F0] text-center">
-                <div className="group cursor-pointer">
-                  <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
-                    {currentUser.postsCount ?? currentUser.posts ?? 24}
+                {/* 3 Cột số liệu thống kê: 18px/600 font, hover = accent */}
+                <div className="grid grid-cols-3 gap-2 py-2 border-y border-[#E5E9F0] text-center">
+                  <div className="group cursor-pointer">
+                    <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
+                      {currentUser.postsCount ?? currentUser.posts ?? 24}
+                    </div>
+                    <div className="text-[13px] text-[#64748B]">Bài viết</div>
                   </div>
-                  {/* Secondary text: 13px #64748B chuẩn AA */}
-                  <div className="text-[13px] text-[#64748B]">Bài viết</div>
-                </div>
-                <div className="group cursor-pointer">
-                  <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
-                    {currentUser.followersCount ?? currentUser.followers ?? 0}
+                  <div className="group cursor-pointer">
+                    <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
+                      {currentUser.followersCount ?? currentUser.followers ?? 64}
+                    </div>
+                    <div className="text-[13px] text-[#64748B]">Theo dõi</div>
                   </div>
-                  <div className="text-[13px] text-[#64748B]">Theo dõi</div>
-                </div>
-                <div className="group cursor-pointer">
-                  <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
-                    {currentUser.followingCount ?? currentUser.following ?? 0}
+                  <div className="group cursor-pointer">
+                    <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
+                      {currentUser.followingCount ?? currentUser.following ?? 50}
+                    </div>
+                    <div className="text-[13px] text-[#64748B]">Đang theo</div>
                   </div>
-                  <div className="text-[13px] text-[#64748B]">Đang theo</div>
                 </div>
               </div>
             </div>
 
-            {/* WIDGET 2: CHỦ ĐỀ GỘP 2 TAB (Thịnh hành | Của bạn) */}
-            <div className="bg-white rounded-[16px] p-5 border border-[#E5E9F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3.5">
+            {/* WIDGET 2: CHỦ ĐỀ GỘP 2 TAB (Thịnh hành | Của bạn) VỚI PASTEL DOTS */}
+            <div className="bg-white rounded-[16px] p-5 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3.5 animate-fade-up stagger-2">
               <div className="flex items-center justify-between pb-1 border-b border-[#E5E9F0]/60">
                 <h3 className="text-[14px] font-semibold text-[#0F172A]">Chủ đề</h3>
                 
@@ -473,7 +478,7 @@ export default function MainLayout() {
                 <div className="flex items-center gap-1 p-0.5 bg-[#F8FAFC] border border-[#E5E9F0] rounded-[8px]">
                   <button
                     onClick={() => setTopicTab('trending')}
-                    className={`text-xs px-2.5 py-1 rounded-[6px] font-medium transition-colors duration-150 ${
+                    className={`text-xs px-2.5 py-1 rounded-[6px] font-medium transition-all duration-150 btn-press ${
                       topicTab === 'trending'
                         ? 'bg-[#EFF4FF] text-[#2563EB] shadow-2xs font-semibold'
                         : 'text-[#64748B] hover:text-[#0F172A]'
@@ -483,7 +488,7 @@ export default function MainLayout() {
                   </button>
                   <button
                     onClick={() => setTopicTab('mine')}
-                    className={`text-xs px-2.5 py-1 rounded-[6px] font-medium transition-colors duration-150 ${
+                    className={`text-xs px-2.5 py-1 rounded-[6px] font-medium transition-all duration-150 btn-press ${
                       topicTab === 'mine'
                         ? 'bg-[#EFF4FF] text-[#2563EB] shadow-2xs font-semibold'
                         : 'text-[#64748B] hover:text-[#0F172A]'
@@ -499,6 +504,7 @@ export default function MainLayout() {
                 <div className="space-y-1.5 pt-0.5">
                   {mockTopics.slice(0, 5).map((topic, index) => {
                     const isSelected = selectedTopic === topic.name;
+                    const dotColor = getTopicColor(topic.name);
 
                     return (
                       <div
@@ -514,6 +520,7 @@ export default function MainLayout() {
                           <span className="text-[11px] text-[#64748B] font-semibold tabular-nums w-4">
                             #{index + 1}
                           </span>
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
                           <span className="font-medium text-[#2563EB]">#{topic.name}</span>
                         </div>
                         <span className="text-[12px] text-[#64748B] tabular-nums">
@@ -525,22 +532,24 @@ export default function MainLayout() {
                 </div>
               )}
 
-              {/* Nội dung Tab Của bạn (dạng chips kèm X khi active) */}
+              {/* Nội dung Tab Của bạn (dạng chips kèm pastel dot & X khi active) */}
               {topicTab === 'mine' && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {mockTopics.map((topic) => {
                     const isSelected = selectedTopic === topic.name;
+                    const dotColor = getTopicColor(topic.name);
 
                     return (
                       <button
                         key={topic.id}
                         onClick={() => setSelectedTopic(isSelected ? null : topic.name)}
-                        className={`h-8 px-3 rounded-[10px] text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 ${
+                        className={`h-8 px-3 rounded-[10px] text-xs font-medium flex items-center gap-1.5 transition-all duration-150 btn-press ${
                           isSelected
                             ? 'bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/30'
                             : 'bg-white border border-[#E5E9F0] text-[#475569] hover:border-[#2563EB] hover:text-[#2563EB]'
                         }`}
                       >
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
                         <span>#{topic.name}</span>
                         {isSelected && <X className="h-3 w-3 text-[#2563EB]" />}
                       </button>
@@ -602,7 +611,7 @@ export default function MainLayout() {
       {/* ======================================================== */}
       {/* 4A. CREATE POST MODAL */}
       <Dialog open={isCreatePostOpen} onOpenChange={setIsCreatePostOpen}>
-        <DialogContent className="sm:max-w-lg bg-white text-[#0F172A] border border-[#E5E9F0] p-6 rounded-[16px] shadow-lg">
+        <DialogContent className="sm:max-w-lg bg-white text-[#0F172A] border border-[#E5E9F0] p-6 rounded-[16px] shadow-xl animate-in fade-in zoom-in-95 duration-120">
           <DialogHeader className="pb-3 border-b border-[#E5E9F0]">
             <DialogTitle className="text-base font-semibold text-[#0F172A]">
               Tạo bài viết mới
@@ -640,13 +649,14 @@ export default function MainLayout() {
                     key={topic.id}
                     type="button"
                     onClick={() => setNewPostTopic(newPostTopic === topic.name ? '' : topic.name)}
-                    className={`h-7 px-2.5 rounded-lg text-xs font-medium transition-colors duration-150 ${
+                    className={`h-7 px-2.5 rounded-lg text-xs font-medium transition-colors duration-150 btn-press flex items-center gap-1.5 ${
                       newPostTopic === topic.name
                         ? 'bg-[#2563EB] text-white'
                         : 'bg-[#EFF4FF] text-[#2563EB] hover:bg-blue-100'
                     }`}
                   >
-                    #{topic.name}
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTopicColor(topic.name) }} />
+                    <span>#{topic.name}</span>
                   </button>
                 ))}
               </div>
@@ -656,14 +666,14 @@ export default function MainLayout() {
               <button
                 type="button"
                 onClick={() => setIsCreatePostOpen(false)}
-                className="h-9 px-4 rounded-[10px] text-xs font-medium text-[#475569] hover:bg-slate-100 transition-colors duration-150"
+                className="h-9 px-4 rounded-[10px] text-xs font-medium text-[#475569] hover:bg-slate-100 transition-colors duration-150 btn-press"
               >
                 Hủy
               </button>
               <button
                 type="submit"
                 disabled={!newPostContent.trim()}
-                className="h-9 px-5 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-40 text-white font-medium text-xs flex items-center gap-1.5 transition-colors duration-150"
+                className="h-9 px-5 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-40 text-white font-medium text-xs flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-xs"
               >
                 <Send className="h-3.5 w-3.5" />
                 <span>Đăng bài</span>
@@ -675,7 +685,7 @@ export default function MainLayout() {
 
       {/* 4B. GRAPH CANVAS MODAL */}
       <Dialog open={isGraphModalOpen} onOpenChange={setIsGraphModalOpen}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] bg-white text-[#0F172A] border border-[#E5E9F0] p-6 flex flex-col rounded-[16px] shadow-xl">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] bg-white text-[#0F172A] border border-[#E5E9F0] p-6 flex flex-col rounded-[16px] shadow-2xl animate-in fade-in zoom-in-95 duration-120">
           <DialogHeader className="pb-3 border-b border-[#E5E9F0]">
             <DialogTitle className="flex items-center gap-2.5 text-base font-semibold text-[#0F172A]">
               <div className="p-1.5 rounded-[8px] bg-[#EFF4FF] text-[#2563EB]">
