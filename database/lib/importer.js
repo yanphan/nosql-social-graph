@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse } from 'csv-parse/sync';
+import { parse } from '../../backend/node_modules/csv-parse/dist/esm/sync.js';
 import { write, connectDb, closeDb, getGraph } from '../../backend/src/db/graph.js';
 import { admin } from '../../backend/src/queries/admin.js';
 
