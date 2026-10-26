@@ -25,6 +25,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -86,6 +87,9 @@ export default function AdminPage() {
 
   // Avatar Dropdown
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+
+  // Chart Hover State
+  const [activeBarIndex, setActiveBarIndex] = useState(null);
 
   // Data States
   const [stats, setStats] = useState(null);
@@ -302,119 +306,117 @@ export default function AdminPage() {
       {/* ======================================================== */}
       {/* 1. ADMIN SIDEBAR (Full Viewport Height on EVERY page)     */}
       {/* ======================================================== */}
-      <aside className="w-16 lg:w-64 bg-white border-r border-[#E5E9F0] flex flex-col justify-between shrink-0 h-screen sticky top-0 z-30 transition-all duration-150 ease-out">
-        <div className="flex flex-col">
-          {/* Logo Brand: Khớp với User App + Tag Quản trị */}
-          <div className="h-16 flex items-center gap-2.5 px-4 lg:px-6 border-b border-[#E5E9F0] shrink-0">
-            <Link to="/" className="flex items-center gap-2.5 group btn-press">
-              <div className="h-9 w-9 rounded-[10px] bg-[#EFF4FF] text-[#2563EB] flex items-center justify-center shrink-0 transition-colors duration-150 group-hover:bg-[#DBEAFE]">
-                <Network className="h-5 w-5" />
-              </div>
-              <div className="hidden lg:flex items-center gap-2 min-w-0">
-                <span className="font-semibold text-[15px] tracking-[-0.01em] text-[#0F172A] truncate">
-                  FalkorDB <span className="text-[#2563EB]">Social</span>
-                </span>
-                <span className="text-[10px] font-semibold bg-[#EFF4FF] text-[#2563EB] px-1.5 py-0.5 rounded-[6px] shrink-0">
-                  Quản trị
-                </span>
-              </div>
-            </Link>
+      <aside className="w-16 lg:w-64 bg-white border-r border-[#E5E9F0] flex flex-col shrink-0 h-screen sticky top-0 z-30 transition-all duration-150 ease-out">
+        {/* Logo Brand: Khớp với User App + Tag Quản trị */}
+        <div className="h-16 flex items-center gap-2.5 px-4 lg:px-6 border-b border-[#E5E9F0] shrink-0">
+          <Link to="/" className="flex items-center gap-2.5 group btn-press">
+            <div className="h-9 w-9 rounded-[10px] bg-[#EFF4FF] text-[#2563EB] flex items-center justify-center shrink-0 transition-colors duration-150 group-hover:bg-[#DBEAFE]">
+              <Network className="h-5 w-5" />
+            </div>
+            <div className="hidden lg:flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-[15px] tracking-[-0.01em] text-[#0F172A] truncate">
+                FalkorDB <span className="text-[#2563EB]">Social</span>
+              </span>
+              <span className="text-[10px] font-semibold bg-[#EFF4FF] text-[#2563EB] px-1.5 py-0.5 rounded-[6px] shrink-0">
+                Quản trị
+              </span>
+            </div>
+          </Link>
+        </div>
+
+        {/* Nav Links: flex-1 to fill all vertical space above footer */}
+        <nav className="p-3 space-y-6 flex-1 overflow-y-auto">
+          <div>
+            <div className="hidden lg:block text-[11px] font-semibold uppercase tracking-wider text-[#64748B] px-3 mb-2">
+              Tổng quan
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('dashboard')}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors duration-150 btn-press ${
+                activeTab === 'dashboard'
+                  ? 'bg-[#EFF4FF] text-[#2563EB]'
+                  : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
+              }`}
+              title="Tổng quan"
+            >
+              <LayoutDashboard className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+              <span className="hidden lg:inline">Tổng quan</span>
+            </button>
           </div>
 
-          {/* Nav Links */}
-          <nav className="p-3 space-y-6 overflow-y-auto">
-            <div>
-              <div className="hidden lg:block text-[11px] font-semibold uppercase tracking-wider text-[#64748B] px-3 mb-2">
-                Tổng quan
-              </div>
+          <div>
+            <div className="hidden lg:block text-[11px] font-semibold uppercase tracking-wider text-[#64748B] px-3 mb-2">
+              Quản lý nghiệp vụ
+            </div>
+            <div className="space-y-1">
               <button
                 type="button"
-                onClick={() => setActiveTab('dashboard')}
+                onClick={() => setActiveTab('users')}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors duration-150 btn-press ${
-                  activeTab === 'dashboard'
+                  activeTab === 'users'
                     ? 'bg-[#EFF4FF] text-[#2563EB]'
                     : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
                 }`}
-                title="Tổng quan"
+                title="Người dùng"
               >
-                <LayoutDashboard className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                <span className="hidden lg:inline">Tổng quan</span>
+                <Users className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                <span className="hidden lg:inline">Người dùng</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('topics_posts')}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors duration-150 btn-press ${
+                  activeTab === 'topics_posts'
+                    ? 'bg-[#EFF4FF] text-[#2563EB]'
+                    : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
+                }`}
+                title="Chủ đề & bài viết"
+              >
+                <Hash className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                <span className="hidden lg:inline">Chủ đề &amp; bài viết</span>
               </button>
             </div>
+          </div>
 
-            <div>
-              <div className="hidden lg:block text-[11px] font-semibold uppercase tracking-wider text-[#64748B] px-3 mb-2">
-                Quản lý nghiệp vụ
-              </div>
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('users')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors duration-150 btn-press ${
-                    activeTab === 'users'
-                      ? 'bg-[#EFF4FF] text-[#2563EB]'
-                      : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-                  }`}
-                  title="Người dùng"
-                >
-                  <Users className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                  <span className="hidden lg:inline">Người dùng</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('topics_posts')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors duration-150 btn-press ${
-                    activeTab === 'topics_posts'
-                      ? 'bg-[#EFF4FF] text-[#2563EB]'
-                      : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-                  }`}
-                  title="Chủ đề & bài viết"
-                >
-                  <Hash className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                  <span className="hidden lg:inline">Chủ đề &amp; bài viết</span>
-                </button>
-              </div>
+          <div>
+            <div className="hidden lg:block text-[11px] font-semibold uppercase tracking-wider text-[#64748B] px-3 mb-2">
+              Quản trị hệ thống
             </div>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('system')}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors duration-150 btn-press ${
+                  activeTab === 'system'
+                    ? 'bg-[#EFF4FF] text-[#2563EB]'
+                    : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
+                }`}
+                title="Nhập/xuất & sao lưu"
+              >
+                <Database className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                <span className="hidden lg:inline">Nhập/xuất &amp; sao lưu</span>
+              </button>
 
-            <div>
-              <div className="hidden lg:block text-[11px] font-semibold uppercase tracking-wider text-[#64748B] px-3 mb-2">
-                Quản trị hệ thống
-              </div>
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('system')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors duration-150 btn-press ${
-                    activeTab === 'system'
-                      ? 'bg-[#EFF4FF] text-[#2563EB]'
-                      : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-                  }`}
-                  title="Nhập/xuất & sao lưu"
-                >
-                  <Database className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                  <span className="hidden lg:inline">Nhập/xuất &amp; sao lưu</span>
-                </button>
-
-                <a
-                  href="http://localhost:3000"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-[10px] text-[13px] text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] transition-colors duration-150 btn-press"
-                  title="FalkorDB Browser"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <ExternalLink className="h-4 w-4 text-[#64748B] shrink-0" strokeWidth={1.5} />
-                    <span className="hidden lg:inline">FalkorDB Browser</span>
-                  </div>
-                </a>
-              </div>
+              <a
+                href="http://localhost:3000"
+                target="_blank"
+                rel="noreferrer"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-[10px] text-[13px] text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] transition-colors duration-150 btn-press"
+                title="FalkorDB Browser"
+              >
+                <div className="flex items-center gap-2.5">
+                  <ExternalLink className="h-4 w-4 text-[#64748B] shrink-0" strokeWidth={1.5} />
+                  <span className="hidden lg:inline">FalkorDB Browser</span>
+                </div>
+              </a>
             </div>
-          </nav>
-        </div>
+          </div>
+        </nav>
 
-        {/* Sidebar Footer */}
-        <div className="p-3 border-t border-[#E5E9F0] shrink-0">
+        {/* Sidebar Footer pinned to the bottom */}
+        <div className="p-3 border-t border-[#E5E9F0] shrink-0 mt-auto bg-white">
           <Link
             to="/"
             className="flex items-center gap-2 px-3 py-2 rounded-[10px] text-[13px] text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] transition-colors duration-150 btn-press"
@@ -571,72 +573,80 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              {/* 4 KPI Cards (Staggered Entrance + CountUp numbers) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* 4 KPI Cards (Equal height with items-stretch, single-line legend for Kết nối) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
                 {/* 1. Người dùng */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-2 animate-fade-up stagger-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[#475569]">Người dùng</span>
-                    <Users className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
+                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-1">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium text-[#475569]">Người dùng</span>
+                      <Users className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
+                    </div>
+                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
+                      <CountUp value={stats?.nodes?.User ?? 20} />
+                    </div>
                   </div>
-                  <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                    <CountUp value={stats?.nodes?.User ?? 20} />
-                  </div>
-                  <div className="text-[13px] text-[#64748B]">Đang hoạt động</div>
+                  <div className="text-[13px] text-[#64748B] pt-2">Đang hoạt động</div>
                 </div>
 
                 {/* 2. Bài viết */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-2 animate-fade-up stagger-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[#475569]">Bài viết</span>
-                    <FileText className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
+                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium text-[#475569]">Bài viết</span>
+                      <FileText className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
+                    </div>
+                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
+                      <CountUp value={stats?.nodes?.Post ?? 4} />
+                    </div>
                   </div>
-                  <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                    <CountUp value={stats?.nodes?.Post ?? 4} />
-                  </div>
-                  <div className="text-[13px] text-[#64748B]">Đã gắn chủ đề</div>
+                  <div className="text-[13px] text-[#64748B] pt-2">Đã gắn chủ đề</div>
                 </div>
 
                 {/* 3. Chủ đề */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-2 animate-fade-up stagger-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[#475569]">Chủ đề</span>
-                    <Hash className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
+                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium text-[#475569]">Chủ đề</span>
+                      <Hash className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
+                    </div>
+                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
+                      <CountUp value={stats?.nodes?.Topic ?? 5} />
+                    </div>
                   </div>
-                  <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                    <CountUp value={stats?.nodes?.Topic ?? 5} />
-                  </div>
-                  <div className="text-[13px] text-[#64748B]">Dùng để lọc nội dung</div>
+                  <div className="text-[13px] text-[#64748B] pt-2">Dùng để lọc nội dung</div>
                 </div>
 
                 {/* 4. Kết nối (Merged with Segmented Bar & Matching Colored Dots) */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-2 animate-fade-up stagger-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[#475569]">Kết nối</span>
-                    <Share2 className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
+                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium text-[#475569]">Kết nối</span>
+                      <Share2 className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
+                    </div>
+                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
+                      <CountUp value={totalRels} />
+                    </div>
                   </div>
-                  <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                    <CountUp value={totalRels} />
-                  </div>
-                  {/* Segmented Bar */}
-                  <div className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5 bg-[#F1F5F9] mt-1.5">
-                    <div style={{ width: `${followsPct}%` }} className="bg-[#2563EB]" title={`Theo dõi: ${followsCount}`} />
-                    <div style={{ width: `${postedPct}%` }} className="bg-[#64748B]" title={`Đăng bài: ${postedCount}`} />
-                    <div style={{ width: `${aboutPct}%` }} className="bg-[#94A3B8]" title={`Thuộc chủ đề: ${aboutCount}`} />
-                  </div>
-                  {/* Legend with matching colored dots */}
-                  <div className="flex items-center gap-2 text-[12px] text-[#64748B] pt-0.5 flex-wrap">
-                    <span className="inline-flex items-center gap-1 tabular-nums">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> Theo dõi {followsCount}
-                    </span>
-                    <span>·</span>
-                    <span className="inline-flex items-center gap-1 tabular-nums">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#64748B]" /> Đăng bài {postedCount}
-                    </span>
-                    <span>·</span>
-                    <span className="inline-flex items-center gap-1 tabular-nums">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#94A3B8]" /> Thuộc chủ đề {aboutCount}
-                    </span>
+                  <div className="pt-2 space-y-1.5">
+                    {/* Segmented Bar */}
+                    <div className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5 bg-[#F1F5F9]">
+                      <div style={{ width: `${followsPct}%` }} className="bg-[#2563EB]" title={`Theo dõi: ${followsCount}`} />
+                      <div style={{ width: `${postedPct}%` }} className="bg-[#64748B]" title={`Đăng bài: ${postedCount}`} />
+                      <div style={{ width: `${aboutPct}%` }} className="bg-[#94A3B8]" title={`Chủ đề: ${aboutCount}`} />
+                    </div>
+                    {/* Legend on ONE line (12px, gap 12px between items, no trailing "·", shortened labels) */}
+                    <div className="flex items-center gap-3 text-[12px] text-[#64748B] pt-0.5 whitespace-nowrap overflow-hidden">
+                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> Theo dõi {followsCount}
+                      </span>
+                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#64748B]" /> Đăng bài {postedCount}
+                      </span>
+                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#94A3B8]" /> Chủ đề {aboutCount}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -705,13 +715,21 @@ export default function AdminPage() {
                         />
                         <Bar
                           dataKey="users"
-                          fill="#2563EB"
-                          fillOpacity={0.85}
                           maxBarSize={48}
                           radius={[4, 4, 0, 0]}
                           isAnimationActive={true}
                           animationDuration={500}
+                          onMouseEnter={(_, index) => setActiveBarIndex(index)}
+                          onMouseLeave={() => setActiveBarIndex(null)}
                         >
+                          {(stats?.degreeBuckets || []).map((entry, index) => (
+                            <Cell
+                              key={`bar-${index}`}
+                              fill="#2563EB"
+                              fillOpacity={activeBarIndex === index ? 1 : 0.85}
+                              className="transition-opacity duration-150 cursor-pointer"
+                            />
+                          ))}
                           <LabelList dataKey="users" position="top" fill="#475569" fontSize={12} offset={6} />
                         </Bar>
                       </BarChart>
@@ -878,7 +896,7 @@ export default function AdminPage() {
               {/* Table User (Headers: Sentence Case 13px/500, Status: Soft Chip, Lock: Ghost Button) */}
               <div className="bg-white border border-[#E5E9F0] card-hover rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                 <table className="w-full text-left text-[13px]">
-                  <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium">
+                  <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
                     <tr>
                       <th className="py-3 px-4">Người dùng</th>
                       <th className="py-3 px-4">Tên đăng nhập</th>
@@ -920,11 +938,11 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td className="py-2.5 px-4 text-right">
-                            {/* Smaller Ghost Style Button, turns red tint on hover */}
+                            {/* Ghost button with 1px border #E5E9F0, text #475569; on hover red tint bg #FEF2F2, border #FECACA, text #B91C1C */}
                             <button
                               type="button"
                               onClick={() => handleToggleLockUser(u)}
-                              className="h-7 px-2.5 rounded-[8px] text-[12px] text-[#475569] hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 border border-transparent transition-colors duration-150 btn-press"
+                              className="h-7 px-2.5 rounded-[8px] text-[12px] text-[#475569] bg-transparent border border-[#E5E9F0] hover:bg-[#FEF2F2] hover:border-[#FECACA] hover:text-[#B91C1C] transition-colors duration-150 btn-press"
                             >
                               {isLocked ? 'Mở khóa' : 'Khóa'}
                             </button>
@@ -1020,7 +1038,7 @@ export default function AdminPage() {
 
                   <div className="bg-white border border-[#E5E9F0] card-hover rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                     <table className="w-full text-left text-[13px]">
-                      <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
                         <tr>
                           <th className="py-3 px-4">Tên chủ đề</th>
                           <th className="py-3 px-4">Mô tả</th>
@@ -1059,7 +1077,7 @@ export default function AdminPage() {
                   <span className="text-[14px] font-medium text-[#0F172A]">Danh sách bài viết</span>
                   <div className="bg-white border border-[#E5E9F0] card-hover rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                     <table className="w-full text-left text-[13px]">
-                      <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
                         <tr>
                           <th className="py-3 px-4">Tác giả</th>
                           <th className="py-3 px-4">Nội dung</th>
@@ -1204,21 +1222,21 @@ export default function AdminPage() {
                       Lưu snapshot RDB/AOF và phục hồi khi cần
                     </p>
                   </div>
-                  {/* Single Solid Accent button for this card */}
+                  {/* Outline button for "Tạo bản sao lưu" so "Bắt đầu tạo" is the only solid accent button */}
                   <button
                     type="button"
                     onClick={handleCreateBackup}
                     disabled={loading}
-                    className="h-9 px-4 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs"
+                    className="h-9 px-4 rounded-[10px] bg-white border border-[#E5E9F0] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs"
                   >
-                    <Plus className="h-4 w-4" strokeWidth={1.5} />
+                    <Plus className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
                     <span>Tạo bản sao lưu</span>
                   </button>
                 </div>
 
                 <div className="border border-[#E5E9F0] rounded-[12px] overflow-hidden">
                   <table className="w-full text-left text-[13px]">
-                    <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium">
+                    <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
                       <tr>
                         <th className="py-3 px-4">Tên file</th>
                         <th className="py-3 px-4">Thời gian</th>

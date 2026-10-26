@@ -117,8 +117,8 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
                 <CheckCircle2 className="h-4 w-4 text-[#2563EB] fill-[#EFF4FF] shrink-0" title="Tài khoản đã xác minh" />
               )}
 
-              {/* Tag Nổi bật nếu bài viết có likeCount >= 50 */}
-              {likeCount >= 50 && (
+              {/* Tag Nổi bật nếu bài viết có likeCount >= 60 */}
+              {likeCount >= 60 && (
                 <span className="text-[11px] font-semibold px-2 py-0.2 rounded-full bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/20">
                   Nổi bật
                 </span>
@@ -231,6 +231,7 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
               : 'text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
           }`}
           title="Bình luận"
+          aria-label="Bình luận"
         >
           <MessageCircle className="h-4 w-4" />
           <span className="tabular-nums">{comments.length}</span>
@@ -286,9 +287,10 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
             <div className="pt-2 border-t border-[#E5E9F0]">
               <button
                 onClick={() => setShowComments(true)}
-                className="text-[13px] text-[#64748B] hover:text-[#2563EB] hover:underline transition-colors duration-150"
+                className="text-[13px] text-[#64748B] hover:text-[#2563EB] hover:underline transition-colors duration-150 flex items-center gap-1.5 group"
               >
-                Hãy là người đầu tiên bình luận
+                <MessageCircle className="h-3.5 w-3.5 text-[#64748B] group-hover:text-[#2563EB] transition-colors duration-150" />
+                <span>Hãy là người đầu tiên bình luận</span>
               </button>
             </div>
           )}
