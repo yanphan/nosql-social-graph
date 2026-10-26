@@ -17,34 +17,71 @@
   --shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-/* Helper utility classes for rapid token consumption */
-.theme-user-bg {
-  background-color: var(--color-bg);
+/* Animations & Transitions */
+@keyframes cardFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.theme-user-surface {
-  background-color: var(--color-surface);
+.animate-fade-up {
+  animation: cardFadeUp 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.theme-user-border {
-  border-color: var(--color-border);
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 180ms; }
+
+/* Interactive Hover & Press */
+.card-hover {
+  transition: transform 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out;
 }
 
-.theme-user-card {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-subtle);
+.card-hover:hover {
+  transform: translateY(-1px);
+  border-color: #D7DFEA;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
-.theme-user-text-primary {
-  color: var(--color-text-primary);
+.btn-press {
+  transition: transform 120ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out;
 }
 
-.theme-user-text-secondary {
-  color: var(--color-text-secondary);
+.btn-press:active {
+  transform: scale(0.98);
 }
 
-.theme-user-text-tertiary {
-  color: var(--color-text-tertiary);
+/* Shimmer Skeleton */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Reduced Motion Override */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .skeleton-shimmer {
+    animation: none !important;
+    transform: none !important;
+  }
+  .card-hover:hover,
+  .btn-press:active {
+    transform: none !important;
+  }
 }
