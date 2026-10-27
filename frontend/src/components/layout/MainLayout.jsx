@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { mockUsers, mockTopics, mockPosts, mockApi } from '@/mock/mockData';
+import { 
+  mockUsers, 
+  mockTopics, 
+  mockApi 
+} from '@/mock/mockData';
 import { authService } from '@/services/auth';
-import { postsService } from '@/services/posts';
-import { topicsService } from '@/services/topics';
-import { recommendService } from '@/services/recommend';
 import PostCard from '@/components/post/PostCard';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -35,15 +36,14 @@ import {
   UserCheck, 
   LogOut, 
   ShieldCheck,
-  Send,
-  Loader2
+  Send
 } from 'lucide-react';
 import { getTopicColor } from '@/lib/topicColor';
 import '@/styles/tokens.css';
 
 export default function MainLayout() {
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(() => authService.getStoredUser());
+  const [currentUser] = useState(() => authService.getStoredUser() || mockApi.getCurrentUser());
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [followedUsers, setFollowedUsers] = useState({});
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
@@ -55,58 +55,9 @@ export default function MainLayout() {
   const [unreadCount] = useState(3);
   const [isScrolled, setIsScrolled] = useState(false);
 
-  // Real backend states
-  const [postsList, setPostsList] = useState([]);
-  const [loadingPosts, setLoadingPosts] = useState(true);
-  const [trendingTopics, setTrendingTopics] = useState([]);
-  const [allTopics, setAllTopics] = useState([]);
-  const [friendSuggestions, setFriendSuggestions] = useState([]);
-
-  // Auto ensure valid backend session on mount
-  useEffect(() => {
-    authService.ensureSession('user').then((res) => {
-      if (res?.user) {
-        setCurrentUser(res.user);
-      }
-    });
-  }, []);
-
-  // Fetch real posts from backend
-  const loadPosts = async () => {
-    setLoadingPosts(true);
-    try {
-      const res = await postsService.getPosts({ topic: selectedTopic || undefined, limit: 30 });
-      if (res?.items && res.items.length > 0) {
-        setPostsList(res.items);
-      } else if (!selectedTopic) {
-        setPostsList(mockPosts);
-      } else {
-        setPostsList([]);
-      }
-    } catch (err) {
-      console.warn('Lỗi tải bài viết từ backend, fallback mock:', err.message);
-      setPostsList(mockPosts);
-    } finally {
-      setLoadingPosts(false);
-    }
-  };
-
-  useEffect(() => {
-    loadPosts();
-  }, [selectedTopic]);
-
-  // Fetch topics & recommendations
-  useEffect(() => {
-    topicsService.getTrendingTopics({ limit: 8 }).then((data) => {
-      if (data && data.length > 0) setTrendingTopics(data);
-    });
-    topicsService.getTopics().then((data) => {
-      if (data && data.length > 0) setAllTopics(data);
-    });
-    recommendService.getFriendRecommendations(5).then((data) => {
-      if (data && data.length > 0) setFriendSuggestions(data);
-    });
-  }, [currentUser?.id]);
+  // Feed posts state
+  const [postsList, setPostsList] = useState(() => mockApi.getPosts({}));
+  const friendSuggestions = mockApi.getFriendSuggestions(currentUser.id);
 
   // Scroll listener for topbar faint bottom shadow
   useEffect(() => {
@@ -119,76 +70,41 @@ export default function MainLayout() {
 
   // Filtered posts based on selected topic
   const filteredPosts = selectedTopic 
-    ? postsList.filter((p) => {
-        const tNames = p.topics?.map(t => typeof t === 'string' ? t : t.name) || p.topicNames || [];
-        return tNames.includes(selectedTopic);
-      })
+    ? postsList.filter((p) => p.topics?.some((t) => t.name === selectedTopic) || p.topicNames?.includes(selectedTopic))
     : postsList;
 
-  // Toggle follow/unfollow
-  const toggleFollow = async (userId) => {
-    const isFollowed = followedUsers[userId] ?? false;
+  // Toggle follow/like suggestion
+  const toggleFollow = (userId) => {
     setFollowedUsers((prev) => ({
       ...prev,
-      [userId]: !isFollowed,
+      [userId]: !prev[userId],
     }));
-    try {
-      if (isFollowed) {
-        await recommendService.unfollowUser(userId);
-      } else {
-        await recommendService.followUser(userId);
-      }
-    } catch (err) {
-      console.warn('Lỗi gọi API follow/unfollow:', err.message);
-    }
   };
 
-  // Create post handler calling real backend
-  const handleCreatePost = async (e) => {
+  // Create post handler
+  const handleCreatePost = (e) => {
     e.preventDefault();
     if (!newPostContent.trim()) return;
 
-    const cleanTopic = newPostTopic.trim().replace(/^#/, '');
-    const topicsArr = cleanTopic ? [cleanTopic] : [];
+    const topicObj = mockTopics.find((t) => t.name === newPostTopic) || (newPostTopic ? { id: `top_${Date.now()}`, name: newPostTopic } : null);
 
-    try {
-      const created = await postsService.createPost({
-        content: newPostContent.trim(),
-        topics: topicsArr,
-      });
+    const createdPost = {
+      id: `post_${Date.now()}`,
+      authorId: currentUser.id,
+      author: currentUser,
+      content: newPostContent.trim(),
+      createdAt: Date.now(),
+      likeCount: 0,
+      shareCount: 0,
+      commentCount: 0,
+      topicNames: topicObj ? [topicObj.name] : [],
+      topics: topicObj ? [topicObj] : [],
+    };
 
-      const enrichedPost = {
-        ...created,
-        author: currentUser,
-        likeCount: 0,
-        commentCount: 0,
-        shareCount: 0,
-        topics: topicsArr,
-        createdAt: Date.now(),
-      };
-
-      setPostsList((prev) => [enrichedPost, ...prev]);
-      setNewPostContent('');
-      setNewPostTopic('');
-      setIsCreatePostOpen(false);
-    } catch (err) {
-      console.warn('Lỗi tạo bài viết qua API, áp dụng optimistic UI:', err.message);
-      const fallbackPost = {
-        id: `post_${Date.now()}`,
-        authorId: currentUser.id,
-        author: currentUser,
-        content: newPostContent.trim(),
-        createdAt: Date.now(),
-        likeCount: 0,
-        shareCount: 0,
-        commentCount: 0,
-        topics: topicsArr,
-      };
-      setPostsList([fallbackPost, ...postsList]);
-      setNewPostContent('');
-      setNewPostTopic('');
-      setIsCreatePostOpen(false);
-    }
+    setPostsList([createdPost, ...postsList]);
+    setNewPostContent('');
+    setNewPostTopic('');
+    setIsCreatePostOpen(false);
   };
 
   // Greeting by time of day
@@ -199,10 +115,8 @@ export default function MainLayout() {
     return 'Chào buổi tối';
   };
 
+  // Given name (first word of fullName) e.g. "Alice Nguyen" -> "Alice"
   const givenName = currentUser?.fullName?.trim()?.split(' ')?.[0] || currentUser?.fullName || '';
-  const displayTrending = trendingTopics.length > 0 ? trendingTopics : mockTopics.slice(0, 5);
-  const displayAllTopics = allTopics.length > 0 ? allTopics : mockTopics;
-  const displaySuggestions = friendSuggestions.length > 0 ? friendSuggestions : mockApi.getFriendSuggestions(currentUser?.id);
 
   return (
     <div className="min-h-screen bg-[#F3F5F9] bg-[radial-gradient(ellipse_100%_320px_at_50%_0%,rgba(239,244,255,0.6),transparent)] text-[#0F172A] flex flex-col font-sans antialiased">
@@ -213,7 +127,7 @@ export default function MainLayout() {
         isScrolled ? 'shadow-[0_2px_8px_rgba(15,23,42,0.05)]' : ''
       }`}>
         <div className="max-w-[1400px] mx-auto w-full flex items-center justify-between gap-4 sm:gap-6">
-          {/* Logo Brand Bên Trái */}
+          {/* Logo Brand Bên Trái: Flat Monogram */}
           <Link to="/" className="flex items-center gap-2.5 shrink-0 group btn-press">
             <div className="h-9 w-9 rounded-[10px] bg-[#EFF4FF] text-[#2563EB] flex items-center justify-center transition-colors duration-150 group-hover:bg-[#DBEAFE]">
               <Network className="h-5 w-5" />
@@ -226,10 +140,7 @@ export default function MainLayout() {
           {/* Navigation Pills Ở Giữa */}
           <nav className="hidden md:flex items-center gap-1.5">
             <button
-              onClick={() => {
-                setActiveTab('feed');
-                setSelectedTopic(null);
-              }}
+              onClick={() => setActiveTab('feed')}
               className={`h-9 px-3.5 rounded-[10px] text-xs font-medium flex items-center gap-2 transition-colors duration-150 btn-press ${
                 activeTab === 'feed'
                   ? 'bg-[#EFF4FF] text-[#2563EB]'
@@ -250,59 +161,50 @@ export default function MainLayout() {
             </button>
           </nav>
 
-          {/* Search Bar */}
+          {/* Search Bar: 1px border, white background, Ctrl K hint */}
           <div className="flex-1 max-w-sm hidden lg:block">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#64748B]" />
               <input
                 type="text"
                 placeholder="Tìm bài viết, chủ đề, người dùng…"
-                className="w-full h-9 pl-9 pr-14 bg-white rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#64748B] border border-[#E5E9F0] focus:outline-none focus:ring-1 focus:ring-[#2563EB] focus:border-[#2563EB] transition-all duration-150"
+                className="w-full h-9 pl-9 pr-14 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#64748B] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all duration-150"
               />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 pointer-events-none">
-                <kbd className="text-[10px] text-[#64748B] bg-[#F8FAFC] px-1.5 py-0.5 rounded border border-[#E5E9F0]">Ctrl K</kbd>
-              </div>
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-[#64748B] border border-[#E5E9F0] rounded px-1.5 py-0.5 pointer-events-none">
+                Ctrl K
+              </span>
             </div>
           </div>
 
-          {/* Actions Bên Phải */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Nút Tạo bài viết */}
-            <button
-              onClick={() => setIsCreatePostOpen(true)}
-              className="h-9 px-3.5 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 shadow-xs btn-press"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Tạo bài viết</span>
-            </button>
-
-            {/* Chuông Thông báo */}
+          {/* Right Actions: Notifications + User Dropdown */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Bell icon có badge khi unread > 0 */}
             <button 
-              className="relative h-9 w-9 rounded-[10px] text-[#475569] hover:text-[#0F172A] hover:bg-slate-100 flex items-center justify-center transition-colors duration-150 btn-press"
+              className="relative h-9 w-9 rounded-[10px] text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100 flex items-center justify-center transition-colors duration-150 btn-press"
               title="Thông báo"
             >
               <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
-                <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#2563EB] ring-2 ring-white" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#2563EB]" />
               )}
             </button>
 
-            {/* Profile Dropdown */}
+            {/* Profile Dropdown Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 pl-1 pr-1.5 py-1 rounded-[10px] hover:bg-slate-100 transition-colors duration-150 focus:outline-none btn-press">
+                <button className="flex items-center gap-2 p-1 rounded-[10px] hover:bg-slate-100 transition-colors duration-150 btn-press focus:outline-none focus:ring-2 focus:ring-[#2563EB]">
                   <img
-                    src={currentUser?.avatar}
-                    alt={currentUser?.fullName}
-                    className="w-8 h-8 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shadow-2xs"
+                    src={currentUser.avatar}
+                    alt={currentUser.fullName}
+                    className="w-8 h-8 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0]"
                   />
                   <div className="hidden sm:block text-left">
                     <div className="text-xs font-semibold text-[#0F172A] leading-tight flex items-center gap-1">
-                      {currentUser?.fullName}
-                      {currentUser?.isVerified && <CheckCircle2 className="h-3 w-3 text-[#2563EB]" />}
+                      {currentUser.fullName}
+                      {currentUser.isVerified && <CheckCircle2 className="h-3 w-3 text-[#2563EB]" />}
                     </div>
                     <div className="text-[11px] text-[#64748B] tabular-nums">
-                      @{currentUser?.username}
+                      @{currentUser.username}
                     </div>
                   </div>
                   <ChevronDown className="h-3.5 w-3.5 text-[#64748B] ml-0.5" />
@@ -310,37 +212,40 @@ export default function MainLayout() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 bg-white text-[#475569] shadow-md border border-[#E5E9F0] rounded-[12px] p-1.5 animate-in fade-in zoom-in-95 duration-120">
                 <div className="px-3 py-2 border-b border-[#E5E9F0] mb-1">
-                  <div className="text-xs font-semibold text-[#0F172A] truncate">{currentUser?.fullName}</div>
-                  <div className="text-[11px] text-[#64748B] tabular-nums">@{currentUser?.username}</div>
+                  <div className="text-xs font-semibold text-[#0F172A] truncate">{currentUser.fullName}</div>
+                  <div className="text-[11px] text-[#64748B] tabular-nums">@{currentUser.username}</div>
+                  {/* Thống kê người dùng hiển thị trong dropdown (tiện lợi khi ẩn sidebar phải) */}
                   <div className="grid grid-cols-3 gap-1 pt-2 mt-1 text-center border-t border-[#E5E9F0]/60">
                     <div>
                       <div className="text-xs font-semibold text-[#0F172A] tabular-nums">
-                        {currentUser?.postsCount ?? 24}
+                        {currentUser.postsCount ?? 24}
                       </div>
                       <div className="text-[10px] text-[#64748B]">Bài viết</div>
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-[#0F172A] tabular-nums">
-                        {currentUser?.followersCount ?? 64}
+                        {currentUser.followersCount ?? 64}
                       </div>
                       <div className="text-[10px] text-[#64748B]">Theo dõi</div>
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-[#0F172A] tabular-nums">
-                        {currentUser?.followingCount ?? 50}
+                        {currentUser.followingCount ?? 50}
                       </div>
                       <div className="text-[10px] text-[#64748B]">Đang theo</div>
                     </div>
                   </div>
                 </div>
 
-                <DropdownMenuItem
-                  onClick={() => navigate('/admin')}
-                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-xs font-medium text-[#2563EB] hover:bg-[#EFF4FF]"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  <span>Trang quản trị (Admin)</span>
-                </DropdownMenuItem>
+                {currentUser?.role === 'admin' && (
+                  <DropdownMenuItem
+                    onClick={() => navigate('/admin')}
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-xs font-medium text-[#2563EB] hover:bg-[#EFF4FF]"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Trang quản trị (Admin)</span>
+                  </DropdownMenuItem>
+                )}
 
                 <DropdownMenuItem
                   onClick={() => {
@@ -359,11 +264,12 @@ export default function MainLayout() {
       </header>
 
       {/* ======================================================== */}
-      {/* 2. MAIN LAYOUT: 3 CỘT                                     */}
+      {/* 2. MAIN LAYOUT: 3 CỘT (Sticky sidebars at top 88px)       */}
       {/* ======================================================== */}
       <div className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6 pb-20 sm:pb-8">
         <div className="flex justify-center gap-6 w-full">
           {/* ================= CỘT TRÁI (LEFT SIDEBAR) ================= */}
+          {/* Sticky at top 88px, Ẩn dưới 1024px */}
           <aside className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 sticky top-[88px] self-start space-y-4">
             {/* Card 1: Gợi ý kết bạn */}
             <div className="bg-white rounded-[16px] p-5 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-4 animate-fade-up stagger-1">
@@ -373,7 +279,7 @@ export default function MainLayout() {
               </div>
 
               <div className="space-y-3">
-                {displaySuggestions.map((user) => {
+                {friendSuggestions.map((user) => {
                   const isFollowed = followedUsers[user.id] ?? false;
 
                   return (
@@ -388,12 +294,14 @@ export default function MainLayout() {
                           <div className="font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] cursor-pointer">
                             {user.fullName}
                           </div>
+                          {/* Secondary text: 13px #64748B chuẩn AA */}
                           <div className="text-[13px] text-[#64748B] truncate tabular-nums">
-                            {user.mutual ?? user.mutualFriends ?? 3} bạn chung
+                            {user.mutualFriends || 3} bạn chung
                           </div>
                         </div>
                       </div>
 
+                      {/* Follow Button: UserPlus / UserCheck icon */}
                       <button
                         onClick={() => toggleFollow(user.id)}
                         className={`h-8 w-8 rounded-[10px] flex items-center justify-center transition-all duration-150 btn-press ${
@@ -414,78 +322,60 @@ export default function MainLayout() {
                 })}
               </div>
 
-              {/* Nút Khám phá đồ thị */}
+              {/* Nút Khám phá đồ thị: Tint style với subtitle 12px secondary text */}
               <div className="pt-1">
                 <button
                   onClick={() => setIsGraphModalOpen(true)}
                   className="w-full rounded-[12px] bg-[#EFF4FF] hover:bg-blue-100 text-[#2563EB] border border-[#2563EB]/20 p-3 text-left flex items-center gap-3 transition-colors duration-150 btn-press"
                 >
-                  <div className="p-2 rounded-[8px] bg-[#2563EB] text-white">
-                    <Network className="h-4 w-4" />
+                  <div className="h-9 w-9 rounded-lg bg-white/80 text-[#2563EB] flex items-center justify-center shrink-0 border border-[#2563EB]/20 shadow-2xs">
+                    <Network className="h-5 w-5" />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-xs text-[#2563EB]">Khám phá Đồ thị</div>
-                    <div className="text-[12px] text-[#64748B] truncate">Mạng lưới quan hệ FalkorDB</div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-[#2563EB] leading-tight">
+                      Khám phá đồ thị
+                    </div>
+                    <div className="text-[12px] text-[#64748B] font-normal truncate mt-0.5">
+                      Xem mạng lưới bạn bè của bạn
+                    </div>
                   </div>
                 </button>
               </div>
             </div>
-
-            {/* Quick Links Footer */}
-            <div className="px-2 text-[12px] text-[#64748B] space-y-2">
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                <span className="hover:text-[#2563EB] cursor-pointer">Về dự án</span>
-                <span>•</span>
-                <span className="hover:text-[#2563EB] cursor-pointer">FalkorDB Graph</span>
-                <span>•</span>
-                <span className="hover:text-[#2563EB] cursor-pointer">GraphBLAS</span>
-              </div>
-              <p className="text-[11px] text-[#94A3B8]">© 2024 NoSQL Social Graph Network.</p>
-            </div>
           </aside>
 
           {/* ================= CỘT GIỮA (CENTER FEED) ================= */}
-          <main className="w-full max-w-[620px] shrink-0 space-y-4">
-            {/* BANNER CHÀO MỪNG */}
-            <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 rounded-[16px] p-5 sm:p-6 text-white shadow-[0_4px_16px_rgba(37,99,235,0.18)] relative overflow-hidden animate-fade-up">
-              <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.18),transparent_70%)] pointer-events-none" />
-              
-              <div className="relative z-10 space-y-1.5">
-                <div className="flex items-center gap-2 text-blue-100 text-xs font-medium">
-                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>{getGreeting()}</span>
-                </div>
-                <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-                  Chào mừng trở lại, {givenName}!
-                </h2>
-                <p className="text-xs text-blue-100/90 leading-relaxed max-w-md">
-                  Kết nối trực tiếp CSDL đồ thị FalkorDB trong bộ nhớ RAM. Khám phá các mối quan hệ xã hội được tối ưu hóa.
-                </p>
-              </div>
+          <main className="flex-1 max-w-2xl xl:max-w-3xl min-w-0 space-y-4">
+            {/* LỜI CHÀO SỬ DỤNG GIVEN NAME ("Alice Nguyen" -> "Alice") */}
+            <div className="text-[14px] font-medium text-[#475569] px-1 animate-fade-up">
+              {getGreeting()}, {givenName}
             </div>
 
-            {/* THANH COMPOSER TẠO BÀI VIẾT NHANH */}
-            <div 
-              onClick={() => setIsCreatePostOpen(true)}
-              className="bg-white rounded-[16px] p-4 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex items-center gap-3 cursor-pointer animate-fade-up"
-            >
+            {/* INLINE COMPOSER AT TOP OF FEED (Nút Đăng bài duy nhất gần feed top) */}
+            <div className="bg-white rounded-[16px] p-4 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex items-center gap-3 animate-fade-up stagger-1">
               <img
                 src={currentUser?.avatar}
                 alt={currentUser?.fullName}
-                className="w-10 h-10 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
+                className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
               />
-              <div className="flex-1 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#64748B] text-xs px-4 py-2.5 rounded-[12px] border border-[#E5E9F0] transition-colors duration-150">
-                {givenName} ơi, bạn đang nghĩ gì thế?
-              </div>
-              <button 
-                className="h-9 px-3.5 rounded-[10px] bg-[#2563EB] text-white hover:bg-[#1D4ED8] flex items-center justify-center transition-colors duration-150 shrink-0 shadow-xs btn-press"
-                title="Đăng bài mới"
+              <button
+                type="button"
+                onClick={() => setIsCreatePostOpen(true)}
+                className="flex-1 h-9 px-3.5 text-left text-xs text-[#64748B] bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E5E9F0] rounded-[10px] transition-colors duration-150 btn-press"
+              >
+                Bạn đang nghĩ gì?
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCreatePostOpen(true)}
+                className="h-9 px-3.5 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium text-xs flex items-center gap-1.5 transition-colors duration-150 btn-press shrink-0 shadow-2xs"
               >
                 <Plus className="h-4 w-4" />
+                <span>Đăng bài</span>
               </button>
             </div>
 
-            {/* THANH BÁO CHỦ ĐỀ ĐANG CHỌN */}
+            {/* BỘ LỌC CHỦ ĐỀ ĐANG CHỌN */}
             {selectedTopic && (
               <div className="bg-white rounded-[12px] px-4 py-2.5 border border-[#E5E9F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex items-center justify-between text-xs animate-fade-up">
                 <span className="text-[#475569]">
@@ -502,12 +392,7 @@ export default function MainLayout() {
 
             {/* DÒNG BÀI VIẾT (POSTS FEED) */}
             <div className="space-y-4">
-              {loadingPosts ? (
-                <div className="bg-white rounded-[16px] p-10 border border-[#E5E9F0] text-center text-xs text-[#64748B] flex flex-col items-center justify-center space-y-2">
-                  <Loader2 className="h-6 w-6 animate-spin text-[#2563EB]" />
-                  <span>Đang tải bảng tin từ CSDL đồ thị FalkorDB...</span>
-                </div>
-              ) : filteredPosts.length === 0 ? (
+              {filteredPosts.length === 0 ? (
                 <div className="bg-white rounded-[16px] p-8 border border-[#E5E9F0] text-center text-xs text-[#64748B] space-y-2">
                   <p>Không có bài viết nào thuộc chủ đề này.</p>
                   <button
@@ -532,46 +417,51 @@ export default function MainLayout() {
           </main>
 
           {/* ================= CỘT PHẢI (RIGHT SIDEBAR) ================= */}
+          {/* Sticky at top 88px, Ẩn dưới 1280px */}
           <aside className="hidden xl:flex flex-col w-72 xl:w-80 shrink-0 sticky top-[88px] self-start space-y-4">
-            {/* WIDGET 1: USER PROFILE CARD */}
+            {/* WIDGET 1: USER PROFILE CARD (56px Gradient Cover + Overlapping Avatar) */}
             <div className="bg-white rounded-[16px] border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden animate-fade-up stagger-1">
+              {/* 56px soft gradient cover (#DBEAFE -> #EFF4FF) */}
               <div className="h-14 w-full bg-gradient-to-r from-[#DBEAFE] to-[#EFF4FF]" />
 
               <div className="px-5 pb-5 pt-0 space-y-3">
+                {/* Avatar overlapping the bottom edge with 2px white ring */}
                 <div className="-mt-7">
                   <img
-                    src={currentUser?.avatar}
-                    alt={currentUser?.fullName}
+                    src={currentUser.avatar}
+                    alt={currentUser.fullName}
                     style={{ width: '56px', height: '56px' }}
                     className="w-14 h-14 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shadow-xs shrink-0"
                   />
                 </div>
 
+                {/* Name and @username below the avatar */}
                 <div className="min-w-0">
                   <h4 className="font-semibold text-[14px] text-[#0F172A] truncate">
-                    {currentUser?.fullName}
+                    {currentUser.fullName}
                   </h4>
                   <p className="text-[12px] text-[#64748B] tabular-nums truncate">
-                    @{currentUser?.username}
+                    @{currentUser.username}
                   </p>
                 </div>
 
+                {/* 3 Cột số liệu thống kê: 18px/600 font, hover = accent */}
                 <div className="grid grid-cols-3 gap-2 py-2 border-y border-[#E5E9F0] text-center">
                   <div className="group cursor-pointer">
                     <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
-                      {currentUser?.postsCount ?? 24}
+                      {currentUser.postsCount ?? currentUser.posts ?? 24}
                     </div>
                     <div className="text-[13px] text-[#64748B]">Bài viết</div>
                   </div>
                   <div className="group cursor-pointer">
                     <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
-                      {currentUser?.followersCount ?? 64}
+                      {currentUser.followersCount ?? currentUser.followers ?? 64}
                     </div>
                     <div className="text-[13px] text-[#64748B]">Theo dõi</div>
                   </div>
                   <div className="group cursor-pointer">
                     <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] text-[18px] tabular-nums transition-colors duration-150">
-                      {currentUser?.followingCount ?? 50}
+                      {currentUser.followingCount ?? currentUser.following ?? 50}
                     </div>
                     <div className="text-[13px] text-[#64748B]">Đang theo</div>
                   </div>
@@ -579,11 +469,12 @@ export default function MainLayout() {
               </div>
             </div>
 
-            {/* WIDGET 2: CHỦ ĐỀ GỘP 2 TAB */}
+            {/* WIDGET 2: CHỦ ĐỀ GỘP 2 TAB (Thịnh hành | Của bạn) VỚI PASTEL DOTS */}
             <div className="bg-white rounded-[16px] p-5 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3.5 animate-fade-up stagger-2">
               <div className="flex items-center justify-between pb-1 border-b border-[#E5E9F0]/60">
                 <h3 className="text-[14px] font-semibold text-[#0F172A]">Chủ đề</h3>
                 
+                {/* 2 Tabs chuyển đổi nhẹ nhàng */}
                 <div className="flex items-center gap-1 p-0.5 bg-[#F8FAFC] border border-[#E5E9F0] rounded-[8px]">
                   <button
                     onClick={() => setTopicTab('trending')}
@@ -603,7 +494,7 @@ export default function MainLayout() {
                         : 'text-[#64748B] hover:text-[#0F172A]'
                     }`}
                   >
-                    Tất cả
+                    Của bạn
                   </button>
                 </div>
               </div>
@@ -611,13 +502,13 @@ export default function MainLayout() {
               {/* Nội dung Tab Thịnh hành */}
               {topicTab === 'trending' && (
                 <div className="space-y-1.5 pt-0.5">
-                  {displayTrending.slice(0, 6).map((topic, index) => {
+                  {mockTopics.slice(0, 5).map((topic, index) => {
                     const isSelected = selectedTopic === topic.name;
                     const dotColor = getTopicColor(topic.name);
 
                     return (
                       <div
-                        key={topic.id || topic.name}
+                        key={topic.id}
                         onClick={() => setSelectedTopic(isSelected ? null : topic.name)}
                         className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors duration-150 ${
                           isSelected 
@@ -633,7 +524,7 @@ export default function MainLayout() {
                           <span className="font-medium text-[#2563EB]">#{topic.name}</span>
                         </div>
                         <span className="text-[12px] text-[#64748B] tabular-nums">
-                          {topic.postCount ?? topic.interactions ?? topic.likes ?? 8} bài
+                          {topic.postCount ?? 8} bài
                         </span>
                       </div>
                     );
@@ -641,16 +532,16 @@ export default function MainLayout() {
                 </div>
               )}
 
-              {/* Nội dung Tab Tất cả */}
+              {/* Nội dung Tab Của bạn (dạng chips kèm pastel dot & X khi active) */}
               {topicTab === 'mine' && (
-                <div className="flex flex-wrap gap-1.5 pt-1 max-h-56 overflow-y-auto">
-                  {displayAllTopics.map((topic) => {
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {mockTopics.map((topic) => {
                     const isSelected = selectedTopic === topic.name;
                     const dotColor = getTopicColor(topic.name);
 
                     return (
                       <button
-                        key={topic.id || topic.name}
+                        key={topic.id}
                         onClick={() => setSelectedTopic(isSelected ? null : topic.name)}
                         className={`h-8 px-3 rounded-[10px] text-xs font-medium flex items-center gap-1.5 transition-all duration-150 btn-press ${
                           isSelected
@@ -672,7 +563,7 @@ export default function MainLayout() {
       </div>
 
       {/* ======================================================== */}
-      {/* 3. MOBILE BOTTOM NAVIGATION                               */}
+      {/* 3. MOBILE BOTTOM NAVIGATION (Hiện dưới 640px)             */}
       {/* ======================================================== */}
       <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-[#E5E9F0] px-4 py-2 flex items-center justify-around shadow-sm">
         <button
@@ -716,8 +607,9 @@ export default function MainLayout() {
       </nav>
 
       {/* ======================================================== */}
-      {/* 4. MODALS: CREATE POST & GRAPH CANVAS                     */}
+      {/* 4. MODAL DIALOGS: CREATE POST & GRAPH CANVAS              */}
       {/* ======================================================== */}
+      {/* 4A. CREATE POST MODAL */}
       <Dialog open={isCreatePostOpen} onOpenChange={setIsCreatePostOpen}>
         <DialogContent className="sm:max-w-lg bg-white text-[#0F172A] border border-[#E5E9F0] p-6 rounded-[16px] shadow-xl animate-in fade-in zoom-in-95 duration-120">
           <DialogHeader className="pb-3 border-b border-[#E5E9F0]">
@@ -729,13 +621,13 @@ export default function MainLayout() {
           <form onSubmit={handleCreatePost} className="space-y-4 pt-3">
             <div className="flex items-center gap-3">
               <img
-                src={currentUser?.avatar}
-                alt={currentUser?.fullName}
+                src={currentUser.avatar}
+                alt={currentUser.fullName}
                 className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0]"
               />
               <div>
-                <div className="font-semibold text-xs text-[#0F172A]">{currentUser?.fullName}</div>
-                <div className="text-[11px] text-[#64748B]">Đăng lên CSDL FalkorDB</div>
+                <div className="font-semibold text-xs text-[#0F172A]">{currentUser.fullName}</div>
+                <div className="text-[11px] text-[#64748B]">Đăng công khai</div>
               </div>
             </div>
 
@@ -751,10 +643,10 @@ export default function MainLayout() {
               <label className="block text-[11px] font-medium text-[#64748B] mb-1.5">
                 Gắn chủ đề bài viết:
               </label>
-              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-                {displayAllTopics.map((topic) => (
+              <div className="flex flex-wrap gap-1.5">
+                {mockTopics.map((topic) => (
                   <button
-                    key={topic.id || topic.name}
+                    key={topic.id}
                     type="button"
                     onClick={() => setNewPostTopic(newPostTopic === topic.name ? '' : topic.name)}
                     className={`h-7 px-2.5 rounded-lg text-xs font-medium transition-colors duration-150 btn-press flex items-center gap-1.5 ${
@@ -791,7 +683,7 @@ export default function MainLayout() {
         </DialogContent>
       </Dialog>
 
-      {/* GRAPH CANVAS MODAL */}
+      {/* 4B. GRAPH CANVAS MODAL */}
       <Dialog open={isGraphModalOpen} onOpenChange={setIsGraphModalOpen}>
         <DialogContent className="sm:max-w-4xl max-h-[90vh] bg-white text-[#0F172A] border border-[#E5E9F0] p-6 flex flex-col rounded-[16px] shadow-2xl animate-in fade-in zoom-in-95 duration-120">
           <DialogHeader className="pb-3 border-b border-[#E5E9F0]">
@@ -806,6 +698,7 @@ export default function MainLayout() {
             </DialogDescription>
           </DialogHeader>
 
+          {/* VÙNG KHUNG CANVAS TRỐNG ĐỂ SAU NÀY NHÚNG CYTOSCAPE */}
           <div className="flex-1 min-h-[420px] rounded-[12px] bg-slate-950 border border-slate-800 relative flex flex-col items-center justify-center p-8 text-center overflow-hidden mt-3">
             <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
 
