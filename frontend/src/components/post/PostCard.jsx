@@ -7,7 +7,8 @@ import {
   MoreHorizontal, 
   CheckCircle2, 
   Send,
-  X 
+  X,
+  Loader2
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -16,71 +17,115 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { mockApi } from '@/mock/mockData';
+import { postsService } from '@/services/posts';
 import { getTopicColor } from '@/lib/topicColor';
 import '@/styles/tokens.css';
 
 export default function PostCard({ post, onTopicClick, currentUser, selectedTopic }) {
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(post.likedByMe ?? false);
   const [likeCount, setLikeCount] = useState(post.likeCount || 0);
   const [likeBounce, setLikeBounce] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState(() => mockApi.getCommentsByPostId(post.id) || []);
+  const [comments, setComments] = useState([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
   const [commentLikes, setCommentLikes] = useState({});
   const [newComment, setNewComment] = useState('');
   const [copied, setCopied] = useState(false);
+  const [shareCount, setShareCount] = useState(post.shareCount || 0);
 
-  // Toggle Like with 150ms bounce animation
-  const handleLike = () => {
-    if (liked) {
-      setLiked(false);
-      setLikeCount((c) => Math.max(0, c - 1));
-    } else {
-      setLiked(true);
-      setLikeBounce(true);
-      setTimeout(() => setLikeBounce(false), 200);
-      setLikeCount((c) => c + 1);
+  // Author & Topics normalization
+  const authorFullName = post.author?.fullName || post.author?.username || 'Người dùng';
+  const authorAvatar = post.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.author?.username || post.author?.id || 'user'}&backgroundColor=b6e3f4`;
+  const postTopics = (post.topics || []).map((t) => 
+    typeof t === 'string' ? { id: t, name: t } : { id: t.id || t.name, name: t.name || t.id }
+  );
+
+  // Toggle Like with backend call & animation
+  const handleLike = async () => {
+    const nextLiked = !liked;
+    setLiked(nextLiked);
+    setLikeBounce(true);
+    setTimeout(() => setLikeBounce(false), 200);
+    setLikeCount((c) => (nextLiked ? c + 1 : Math.max(0, c - 1)));
+
+    try {
+      if (nextLiked) {
+        await postsService.likePost(post.id);
+      } else {
+        await postsService.unlikePost(post.id);
+      }
+    } catch (e) {
+      console.warn('Lỗi đồng bộ like:', e.message);
     }
   };
 
-  // Toggle comment like
-  const handleToggleCommentLike = (commentId, initialCount = 0) => {
-    setCommentLikes((prev) => {
-      const isCurrentlyLiked = prev[commentId]?.liked || false;
-      const currentCount = prev[commentId]?.count !== undefined ? prev[commentId].count : initialCount;
-      return {
-        ...prev,
-        [commentId]: {
-          liked: !isCurrentlyLiked,
-          count: isCurrentlyLiked ? Math.max(0, currentCount - 1) : currentCount + 1,
-        },
-      };
-    });
+  // Toggle Comments & fetch on demand
+  const handleToggleComments = async () => {
+    const nextState = !showComments;
+    setShowComments(nextState);
+
+    if (nextState && !commentsLoaded) {
+      setLoadingComments(true);
+      try {
+        const res = await postsService.getComments(post.id);
+        if (res?.items) {
+          setComments(res.items);
+          setCommentsLoaded(true);
+        }
+      } catch (err) {
+        console.warn('Lỗi lấy bình luận:', err.message);
+      } finally {
+        setLoadingComments(false);
+      }
+    }
   };
 
-  // Submit comment
-  const handleAddComment = (e) => {
+  // Submit comment to backend
+  const handleAddComment = async (e) => {
     e.preventDefault();
     if (!newComment.trim()) return;
 
-    const created = {
+    const text = newComment.trim();
+    setNewComment('');
+
+    // Optimistic UI
+    const optimisticCmt = {
       id: `cmt_${Date.now()}`,
-      postId: post.id,
-      authorId: currentUser?.id || 'usr_alice',
-      author: currentUser || mockApi.getCurrentUser(),
-      content: newComment.trim(),
+      userId: currentUser?.id,
+      username: currentUser?.username || 'me',
+      author: currentUser,
+      content: text,
+      text,
       createdAt: Date.now(),
+      at: Date.now(),
       likeCount: 0,
     };
-
-    setComments((prev) => [created, ...prev]);
-    setNewComment('');
+    setComments((prev) => [optimisticCmt, ...prev]);
     setShowComments(true);
+    setCommentsLoaded(true);
+
+    try {
+      await postsService.addComment(post.id, text);
+    } catch (err) {
+      console.warn('Lỗi gửi bình luận đến backend:', err.message);
+    }
+  };
+
+  // Share post
+  const handleShare = async () => {
+    setShareCount((c) => c + 1);
+    try {
+      await postsService.sharePost(post.id, 'web');
+    } catch (err) {
+      console.warn('Lỗi share:', err.message);
+    }
   };
 
   // Format thời gian ngắn gọn
   const formatTime = (epochMs) => {
+    if (!epochMs) return 'Vừa xong';
     const diff = Date.now() - epochMs;
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `${Math.max(1, mins)} phút trước`;
@@ -90,16 +135,16 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
     return `${days} ngày trước`;
   };
 
-  const latestComment = comments.length > 0 ? comments[0] : null;
+  const totalCommentCount = Math.max(post.commentCount || 0, comments.length);
 
   return (
     <article className="bg-white rounded-[16px] p-5 sm:p-6 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3.5 animate-fade-up">
-      {/* 1. HEADER: Avatar tròn (2px white ring + 1px border) + Tên tác giả + Nổi bật + Thời gian + Menu 3 chấm */}
+      {/* 1. HEADER */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <img
-            src={post.author?.avatar}
-            alt={post.author?.fullName}
+            src={authorAvatar}
+            alt={authorFullName}
             className="w-10 h-10 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
           />
 
@@ -107,25 +152,21 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
             <div className="flex items-center gap-1.5 flex-wrap">
               <h3 
                 className="font-semibold text-[15px] text-[#0F172A] hover:text-[#2563EB] cursor-pointer leading-snug tracking-tight"
-                title={post.author?.country === 'VN' ? 'Hà Nội, Việt Nam' : 'San Francisco, Hoa Kỳ'}
               >
-                {post.author?.fullName}
+                {authorFullName}
               </h3>
               
-              {/* Verified badge: chỉ hiện khi author.isVerified === true */}
               {post.author?.isVerified === true && (
                 <CheckCircle2 className="h-4 w-4 text-[#2563EB] fill-[#EFF4FF] shrink-0" title="Tài khoản đã xác minh" />
               )}
 
-              {/* Tag Nổi bật nếu bài viết có likeCount >= 60 */}
-              {likeCount >= 60 && (
+              {likeCount >= 10 && (
                 <span className="text-[11px] font-semibold px-2 py-0.2 rounded-full bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/20">
                   Nổi bật
                 </span>
               )}
             </div>
             
-            {/* Secondary text: 13px #64748B chuẩn AA */}
             <div className="text-[13px] text-[#64748B] mt-0.5 font-normal">
               <span>{formatTime(post.createdAt)}</span>
             </div>
@@ -167,16 +208,16 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
         </DropdownMenu>
       </div>
 
-      {/* 2. BODY CONTENT: line-height 1.65 */}
+      {/* 2. BODY CONTENT */}
       <div className="space-y-3">
         <p className="text-[15px] text-[#0F172A] leading-[1.65] font-normal whitespace-pre-line tracking-normal">
           {post.content}
         </p>
 
-        {/* Hashtag chips with stable pastel color dot */}
-        {post.topics?.length > 0 && (
+        {/* Hashtag chips */}
+        {postTopics.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-            {post.topics.map((topic) => {
+            {postTopics.map((topic) => {
               const isActive = selectedTopic === topic.name;
               const dotColor = getTopicColor(topic.name);
 
@@ -200,9 +241,9 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
         )}
       </div>
 
-      {/* 3. ACTION ROW: Ghost icon buttons, icon + count only, tooltips */}
+      {/* 3. ACTION ROW */}
       <div className="flex items-center gap-1 pt-1 border-t border-[#E5E9F0]">
-        {/* Like Button: 1 -> 1.2 -> 1 scale on click, accent color fill & text */}
+        {/* Like Button */}
         <button
           onClick={handleLike}
           className={`h-8 px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press ${
@@ -222,9 +263,9 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
           </span>
         </button>
 
-        {/* Comment Button: Always show count (0 included), hover = accent tint */}
+        {/* Comment Button */}
         <button
-          onClick={() => setShowComments(!showComments)}
+          onClick={handleToggleComments}
           className={`h-8 px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press ${
             showComments
               ? 'text-[#2563EB] bg-[#EFF4FF]'
@@ -234,70 +275,36 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
           aria-label="Bình luận"
         >
           <MessageCircle className="h-4 w-4" />
-          <span className="tabular-nums">{comments.length}</span>
+          <span className="tabular-nums">{totalCommentCount}</span>
         </button>
 
         {/* Share Button */}
         <button
-          onClick={() => {
-            navigator.clipboard?.writeText(window.location.href);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }}
+          onClick={handleShare}
           className="h-8 px-2.5 rounded-lg text-xs font-medium text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF] flex items-center gap-1.5 transition-colors duration-150 btn-press"
           title="Chia sẻ"
         >
           <Share2 className="h-4 w-4" />
+          {shareCount > 0 && <span className="tabular-nums">{shareCount}</span>}
         </button>
+
+        <div className="flex-1" />
 
         {/* Bookmark Button */}
         <button
           onClick={() => setBookmarked(!bookmarked)}
-          className={`ml-auto h-8 w-8 rounded-lg flex items-center justify-center transition-colors duration-150 btn-press ${
+          className={`h-8 px-2.5 rounded-lg text-xs font-medium transition-colors duration-150 btn-press ${
             bookmarked 
               ? 'text-[#2563EB] bg-[#EFF4FF]' 
-              : 'text-[#64748B] hover:bg-[#EFF4FF] hover:text-[#2563EB]'
+              : 'text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
           }`}
-          title="Lưu bài viết"
+          title={bookmarked ? 'Bỏ lưu' : 'Lưu'}
         >
-          <Bookmark className={`h-4 w-4 ${bookmarked ? 'fill-[#2563EB] text-[#2563EB]' : ''}`} />
+          <Bookmark className={`h-4 w-4 ${bookmarked ? 'fill-[#2563EB]' : ''}`} />
         </button>
       </div>
 
-      {/* 4. PREVIEW OR EXPANDED COMMENTS */}
-      {/* 4a. Collapsed: Preview on separate lines */}
-      {!showComments && (
-        <>
-          {comments.length > 0 && latestComment ? (
-            <div className="pt-2 space-y-1 text-xs border-t border-[#E5E9F0]">
-              <div className="text-[13px] text-[#475569] leading-snug">
-                <span className="font-semibold text-[#0F172A]">{latestComment.author?.fullName}: </span>
-                <span>{latestComment.content}</span>
-              </div>
-              <div>
-                <button
-                  onClick={() => setShowComments(true)}
-                  className="text-[13px] text-[#2563EB] hover:underline font-medium"
-                >
-                  Xem tất cả {comments.length} bình luận
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="pt-2 border-t border-[#E5E9F0]">
-              <button
-                onClick={() => setShowComments(true)}
-                className="text-[13px] text-[#64748B] hover:text-[#2563EB] hover:underline transition-colors duration-150 flex items-center gap-1.5 group"
-              >
-                <MessageCircle className="h-3.5 w-3.5 text-[#64748B] group-hover:text-[#2563EB] transition-colors duration-150" />
-                <span>Hãy là người đầu tiên bình luận</span>
-              </button>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* 4b. Expanded Comments Thread */}
+      {/* 4. EXPANDED COMMENTS */}
       {showComments && (
         <div className="pt-3 border-t border-[#E5E9F0] space-y-3">
           {/* Form nhập comment */}
@@ -326,44 +333,40 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
             </div>
           </form>
 
-          {/* Danh sách bình luận */}
+          {/* Loading indicator */}
+          {loadingComments && (
+            <div className="py-2 flex items-center justify-center gap-2 text-xs text-[#64748B]">
+              <Loader2 className="h-4 w-4 animate-spin text-[#2563EB]" />
+              <span>Đang tải bình luận...</span>
+            </div>
+          )}
+
+          {/* Comments list */}
           <div className="space-y-3 pt-1">
-            {comments.map((cmt) => {
-              const currentLikeState = commentLikes[cmt.id];
-              const isLiked = currentLikeState ? currentLikeState.liked : false;
-              const currentCount = currentLikeState ? currentLikeState.count : (cmt.likeCount || 0);
+            {comments.map((cmt, idx) => {
+              const cmtId = cmt.id || `cmt_${idx}`;
+              const cmtAuthor = cmt.author?.fullName || cmt.username || 'Người dùng';
+              const cmtText = cmt.content || cmt.text;
+              const cmtTime = cmt.createdAt || cmt.at;
+              const cmtAvatar = cmt.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${cmt.username || cmt.userId || idx}&backgroundColor=b6e3f4`;
 
               return (
-                <div key={cmt.id} className="flex items-start gap-2.5 text-xs">
+                <div key={cmtId} className="flex items-start gap-2.5 text-xs">
                   <img
-                    src={cmt.author?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=User'}
-                    alt={cmt.author?.fullName}
+                    src={cmtAvatar}
+                    alt={cmtAuthor}
                     className="w-7 h-7 rounded-full object-cover shrink-0 bg-slate-100 ring-1 ring-white border border-[#E5E9F0] mt-0.5"
                   />
                   <div className="flex-1 bg-[#F8FAFC] rounded-[12px] p-2.5 space-y-1 border border-[#E5E9F0]/60">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold text-[#0F172A] text-xs hover:underline cursor-pointer">
-                        {cmt.author?.fullName}
+                        {cmtAuthor}
                       </span>
-                      <span className="text-[11px] text-[#64748B]">{formatTime(cmt.createdAt)}</span>
+                      <span className="text-[11px] text-[#64748B]">{formatTime(cmtTime)}</span>
                     </div>
                     <p className="text-[#475569] leading-relaxed text-xs">
-                      {cmt.content}
+                      {cmtText}
                     </p>
-                    <div className="flex items-center gap-3 text-[11px] text-[#64748B] pt-1">
-                      <button 
-                        onClick={() => handleToggleCommentLike(cmt.id, cmt.likeCount || 0)}
-                        className={`flex items-center gap-1 transition-colors duration-150 btn-press ${
-                          isLiked ? 'text-[#2563EB] font-medium' : 'hover:text-[#2563EB]'
-                        }`}
-                      >
-                        <Heart className={`h-3 w-3 ${isLiked ? 'fill-[#2563EB] text-[#2563EB]' : ''}`} />
-                        {currentCount > 0 && <span className="tabular-nums">{currentCount}</span>}
-                      </button>
-                      <button className="hover:text-[#2563EB] transition-colors duration-150">
-                        Trả lời
-                      </button>
-                    </div>
                   </div>
                 </div>
               );

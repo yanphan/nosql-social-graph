@@ -174,6 +174,33 @@ export default function LoginPage() {
                   </>
                 )}
               </button>
+
+              {/* Đăng nhập nhanh tài khoản mẫu */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="text-[11px] font-semibold text-slate-400 text-center uppercase tracking-wider">
+                  Tài khoản mẫu (Mật khẩu: Passw0rd!)
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm({ username: 'admin', password: 'Passw0rd!', remember: true });
+                    }}
+                    className="py-2 px-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold border border-slate-200 transition-colors"
+                  >
+                    👑 Quản trị (admin)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm({ username: 'alice', password: 'Passw0rd!', remember: true });
+                    }}
+                    className="py-2 px-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold border border-slate-200 transition-colors"
+                  >
+                    👤 Người dùng (alice)
+                  </button>
+                </div>
+              </div>
             </form>
           </div>
         </div>
