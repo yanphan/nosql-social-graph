@@ -954,6 +954,12 @@ export default function AnalystPage() {
           <div className="h-12 bg-white border-b border-[#E2E8F0] px-4 flex items-center justify-between gap-3 shrink-0 z-10">
             {/* Tên chức năng hiện tại */}
             <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                activeMenu === 'overview' ? 'bg-[#2563EB]' :
+                activeMenu === 'explore' ? 'bg-[#10B981]' :
+                activeMenu === 'pagerank' ? 'bg-[#F59E0B]' :
+                activeMenu === 'communities' ? 'bg-[#8B5CF6]' : 'bg-[#EC4899]'
+              }`} />
               <h1 className="text-sm font-semibold text-[#0F172A]">
                 {activeMenu === 'overview' && 'Tổng quan hệ thống (UC-16)'}
                 {activeMenu === 'explore' && 'Khám phá cấu trúc đồ thị (UC-04)'}
@@ -966,30 +972,8 @@ export default function AnalystPage() {
               </span>
             </div>
 
-            {/* Chuyển Đổi Chế Độ & Action Buttons */}
+            {/* Action Buttons */}
             <div className="flex items-center gap-2">
-              {/* Tab Switch Đồ thị / Thống kê */}
-              <div className="bg-[#F1F5F9] p-0.5 rounded-[8px] flex items-center text-xs">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('graph')}
-                  className={`px-2.5 py-1 rounded-[6px] font-medium transition-all ${
-                    viewMode === 'graph' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-[#64748B] hover:text-[#0F172A]'
-                  }`}
-                >
-                  Đồ thị
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('analytics')}
-                  className={`px-2.5 py-1 rounded-[6px] font-medium transition-all ${
-                    viewMode === 'analytics' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-[#64748B] hover:text-[#0F172A]'
-                  }`}
-                >
-                  Thống kê
-                </button>
-              </div>
-
               {/* Nút Xuất PNG / JSON */}
               <button
                 type="button"
@@ -1017,22 +1001,314 @@ export default function AnalystPage() {
                 className={`p-1.5 rounded-lg border border-[#E2E8F0] transition-colors ${
                   isRightVisible ? 'bg-[#EFF6FF] text-[#2563EB]' : 'bg-white text-[#64748B] hover:text-[#0F172A]'
                 }`}
-                title="Bật/tắt thanh thuộc tính & xếp hạng"
+                title="Bật/tắt thanh thuộc tính & thông tin bổ trợ"
               >
                 <Sliders className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
 
-          {/* VÙNG 1: CANVAS ĐỒ THỊ CYTOSCAPE (HIỂN THỊ KHI VIEWMODE === 'GRAPH') */}
-          {viewMode === 'graph' && (
+          {/* BANNER MỤC ĐÍCH & GIÁ TRỊ PHÂN TÍCH (PURPOSE & ANALYST VALUE) */}
+          <div className="px-4 py-2.5 bg-[#EFF6FF]/60 border-b border-[#DBEAFE] flex items-center justify-between gap-3 shrink-0 text-xs">
+            <div className="flex items-center gap-2 text-[#1E40AF]">
+              <Sparkles className="h-4 w-4 shrink-0 text-[#2563EB]" />
+              <div>
+                <strong className="font-semibold text-[#1E3A8A]">
+                  {activeMenu === 'overview' && 'Mục đích: Giám sát toàn cảnh vĩ mô'}
+                  {activeMenu === 'explore' && 'Mục đích: Khảo sát tự do & Mở rộng liên kết'}
+                  {activeMenu === 'pagerank' && 'Mục đích: Nhận diện thủ lĩnh dư luận (KOLs) thực chất'}
+                  {activeMenu === 'communities' && 'Mục đích: Phát hiện phân khúc người dùng & Buồng vang'}
+                  {activeMenu === 'shortest_path' && 'Mục đích: Điều tra mối quan hệ gián tiếp & Bậc cách biệt'}
+                </strong>
+                <span className="text-[#3B82F6] mx-1.5">•</span>
+                <span className="text-[#334155]">
+                  {activeMenu === 'overview' && 'Cung cấp số liệu sức khỏe đồ thị (10k User, 30k Post, 50 Topic), phân phối bậc liên kết và mật độ tương tác toàn hệ thống.'}
+                  {activeMenu === 'explore' && 'Bấm vào bất kỳ đỉnh nào trên đồ thị để kiểm tra mối quan hệ, mở rộng 1-hop láng giềng kề cận hoặc truy vết các bài đăng/chủ đề liên đới.'}
+                  {activeMenu === 'pagerank' && 'Thuật toán Google PageRank giúp phân biệt tài khoản có ảnh hưởng thực sự (được người uy tín theo dõi) với tài khoản có nhiều follower ảo.'}
+                  {activeMenu === 'communities' && 'Thuật toán WCC phân rã mạng xã hội thành 6 cụm gắn kết; giúp hiểu rõ sở thích riêng biệt của từng cộng đồng và phát hiện liên minh ngầm.'}
+                  {activeMenu === 'shortest_path' && 'Xác định đường đi ngắn nhất giữa 2 người dùng theo lý thuyết 6 bậc cách biệt, chỉ ra chính xác các cá nhân làm cầu nối trung gian.'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ======================================================== */}
+          {/* TAB 1: TỔNG QUAN HỆ THỐNG (UC-16) - EXECUTIVE DASHBOARD */}
+          {/* ======================================================== */}
+          {activeMenu === 'overview' && (
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Thẻ Thống Kê Tổng Quan */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
+                  <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
+                    <span>Tổng Đỉnh (Nodes)</span>
+                    <Users className="h-4 w-4 text-[#2563EB]" />
+                  </div>
+                  <div className="text-2xl font-bold tabular-nums text-[#0F172A]">
+                    {stats?.totalNodes?.toLocaleString('vi-VN') || '40.050'}
+                  </div>
+                  <div className="text-[11px] text-[#64748B]">10k User • 30k Post • 50 Topic</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
+                  <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
+                    <span>Tổng Cạnh (Edges)</span>
+                    <Share2 className="h-4 w-4 text-[#F97316]" />
+                  </div>
+                  <div className="text-2xl font-bold tabular-nums text-[#0F172A]">
+                    {stats?.totalEdges?.toLocaleString('vi-VN') || '386.500'}
+                  </div>
+                  <div className="text-[11px] text-emerald-600 font-medium">↑ +15.2% tương tác mới</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
+                  <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
+                    <span>Bậc Trung Bình / Đỉnh</span>
+                    <Activity className="h-4 w-4 text-[#10B981]" />
+                  </div>
+                  <div className="text-2xl font-bold tabular-nums text-[#0F172A]">
+                    38,6 cạnh
+                  </div>
+                  <div className="text-[11px] text-[#64748B]">Mạng lưới liên kết dày đặc</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
+                  <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
+                    <span>Độ Trễ Cypher (P95)</span>
+                    <Zap className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <div className="text-2xl font-bold tabular-nums text-[#0F172A]">
+                    14.2 ms
+                  </div>
+                  <div className="text-[11px] text-emerald-600 font-medium">↓ Tối ưu bộ nhớ FalkorDB</div>
+                </div>
+              </div>
+
+              {/* Biểu đồ cột Tương tác theo Chủ đề (UC-10, UC-16) */}
+              <div className="bg-white p-5 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-[#0F172A]">
+                      Tương tác theo Chủ đề thảo luận (UC-10)
+                    </h2>
+                    <p className="text-xs text-[#64748B] mt-0.5">
+                      So sánh lượt Thích (Like), Bình luận (Comment) và Chia sẻ trên các Topic hàng đầu
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-[#F1F5F9] p-1 rounded-lg text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setChartMetric('all')}
+                      className={`px-2 py-0.5 rounded font-medium ${
+                        chartMetric === 'all' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-[#64748B]'
+                      }`}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChartMetric('likes')}
+                      className={`px-2 py-0.5 rounded font-medium ${
+                        chartMetric === 'likes' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-[#64748B]'
+                      }`}
+                    >
+                      Chỉ Like
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChartMetric('comments')}
+                      className={`px-2 py-0.5 rounded font-medium ${
+                        chartMetric === 'comments' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-[#64748B]'
+                      }`}
+                    >
+                      Chỉ Comment
+                    </button>
+                  </div>
+                </div>
+
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={trendingTopics} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <RechartsTooltip
+                        contentStyle={{
+                          backgroundColor: '#0F172A',
+                          borderRadius: '8px',
+                          border: 'none',
+                          color: '#FFFFFF',
+                          fontSize: '12px',
+                        }}
+                      />
+                      {(chartMetric === 'all' || chartMetric === 'likes') && (
+                        <Bar dataKey="likes" name="Lượt Thích" fill="#2563EB" radius={[4, 4, 0, 0]} />
+                      )}
+                      {(chartMetric === 'all' || chartMetric === 'comments') && (
+                        <Bar dataKey="comments" name="Bình luận" fill="#F97316" radius={[4, 4, 0, 0]} />
+                      )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Biểu đồ phân phối bậc (Degree Distribution) */}
+              <div className="bg-white p-5 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-[#0F172A]">
+                    Phân phối bậc đồ thị (Degree Distribution - Power Law)
+                  </h2>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    Hầu hết người dùng có từ 1-15 liên kết; một số ít KOLs giữ hàng nghìn liên kết (mạng Scale-Free).
+                  </p>
+                </div>
+
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={stats?.degreeBuckets || [
+                        { bucket: '1-5', count: 4800 },
+                        { bucket: '6-15', count: 2600 },
+                        { bucket: '16-30', count: 1400 },
+                        { bucket: '31-60', count: 750 },
+                        { bucket: '61-120', count: 320 },
+                        { bucket: '>120', count: 80 },
+                      ]}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 10 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                      <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <RechartsTooltip
+                        contentStyle={{
+                          backgroundColor: '#0F172A',
+                          borderRadius: '8px',
+                          border: 'none',
+                          color: '#FFFFFF',
+                          fontSize: '12px',
+                        }}
+                      />
+                      <Bar dataKey="count" name="Số lượng Node" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* TABS 2-5: KHÔNG GIAN ĐỒ THỊ CYTOSCAPE VỚI TOOLBAR CHUYÊN BIỆT */}
+          {/* ======================================================== */}
+          {activeMenu !== 'overview' && (
             <div className={`flex-1 relative overflow-hidden transition-colors ${isDarkCanvas ? 'bg-[#0B1220]' : 'bg-[#F8FAFC]'}`}>
-              {/* VÙNG 2: THANH CÔNG CỤ TÌM ĐƯỜNG ĐI (UC-09) NỔI TRÊN CANVAS */}
+              {/* TOOLBAR CHUYÊN BIỆT CHO TAB 2: KHÁM PHÁ ĐỒ THỊ (UC-04) */}
+              {activeMenu === 'explore' && (
+                <div className="absolute top-3 left-4 right-4 z-20 max-w-xl mx-auto bg-white/95 backdrop-blur-md border border-[#E2E8F0] rounded-[10px] p-2 shadow-sm flex items-center gap-2">
+                  <Compass className="h-4 w-4 text-[#10B981] shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Đặt tâm điểm khảo sát (vd: @alice, @admin, #api)..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.target.value.trim()) {
+                        handleFocusNode(e.target.value.trim());
+                      }
+                    }}
+                    className="flex-1 h-7 bg-slate-50 border border-[#E2E8F0] rounded px-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  />
+                  <span className="text-[11px] text-[#64748B] shrink-0">Nhấn Enter để định vị</span>
+                </div>
+              )}
+
+              {/* TOOLBAR CHUYÊN BIỆT CHO TAB 3: KOLS & PAGERANK (UC-13) */}
+              {activeMenu === 'pagerank' && (
+                <div className="absolute top-3 left-4 right-4 z-20 max-w-2xl mx-auto bg-white/95 backdrop-blur-md border border-[#E2E8F0] rounded-[10px] p-2.5 shadow-sm space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Award className="h-4 w-4 text-[#F59E0B]" />
+                      <span className="font-semibold text-[#0F172A]">Chế độ Quyền lực PageRank (UC-13)</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                        Top 5 có hào quang vàng
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-[#64748B]">Bấm vào KOL để focus mạng lưới</span>
+                  </div>
+                  {/* Top KOL Quick Pills */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {kolsList.slice(0, 4).map((kol) => (
+                      <button
+                        key={kol.id}
+                        type="button"
+                        onClick={() => handleFocusNode(kol.username)}
+                        className="px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-xs text-amber-900 font-medium flex items-center gap-1.5 transition-colors"
+                      >
+                        <span className="w-4 h-4 rounded-full bg-amber-400 text-amber-950 text-[10px] font-bold flex items-center justify-center">
+                          {kol.rank}
+                        </span>
+                        <span>@{kol.username}</span>
+                        <span className="text-[10px] text-amber-700">({(kol.pagerank * 100).toFixed(1)}%)</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TOOLBAR CHUYÊN BIỆT CHO TAB 4: BẢN ĐỒ CỘNG ĐỒNG WCC (UC-14) */}
+              {activeMenu === 'communities' && (
+                <div className="absolute top-3 left-4 right-4 z-20 max-w-2xl mx-auto bg-white/95 backdrop-blur-md border border-[#E2E8F0] rounded-[10px] p-2.5 shadow-sm space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-[#8B5CF6]" />
+                      <span className="font-semibold text-[#0F172A]">Bộ lọc Cụm Cộng đồng WCC (UC-14)</span>
+                    </div>
+                    {activeCommunityHighlight && (
+                      <button
+                        type="button"
+                        onClick={() => handleHighlightCommunity(activeCommunityHighlight)}
+                        className="text-[11px] text-[#64748B] hover:text-[#2563EB]"
+                      >
+                        Hiển thị tất cả cụm
+                      </button>
+                    )}
+                  </div>
+                  {/* Community Selector Pills */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {communitiesList.slice(0, 6).map((c) => {
+                      const cid = String(c.id);
+                      const isSelected = activeCommunityHighlight === cid;
+                      const color = COMMUNITY_COLORS[(Number(c.id) - 1) % COMMUNITY_COLORS.length];
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => handleHighlightCommunity(cid)}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all ${
+                            isSelected
+                              ? 'ring-2 ring-black text-white shadow-xs'
+                              : 'bg-white hover:bg-slate-50 border border-[#E2E8F0] text-[#0F172A]'
+                          }`}
+                          style={{ backgroundColor: isSelected ? color : undefined }}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span>Cụm #{c.id}</span>
+                          <span className={`text-[10px] ${isSelected ? 'text-white/90' : 'text-[#64748B]'}`}>
+                            ({c.size.toLocaleString('vi-VN')} TV)
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* TOOLBAR CHUYÊN BIỆT CHO TAB 5: TÌM ĐƯỜNG ĐI NGẮN NHẤT (UC-09) */}
               {activeMenu === 'shortest_path' && (
                 <div className="absolute top-3 left-4 right-4 z-20 max-w-2xl mx-auto bg-white/95 backdrop-blur-md border border-[#E2E8F0] rounded-[12px] p-3 shadow-lg space-y-2 animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <RouteIcon className="h-4 w-4 text-[#2563EB]" />
+                      <RouteIcon className="h-4 w-4 text-[#EC4899]" />
                       <span className="text-xs font-semibold text-[#0F172A]">Tìm đường đi ngắn nhất giữa hai người dùng (UC-09)</span>
                     </div>
                     {pathResult && (
@@ -1133,7 +1409,7 @@ export default function AnalystPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => cyRef.current?.fit(40)}
+                  onClick={() => cyRef.current?.fit(60)}
                   className="p-1.5 rounded-lg hover:bg-slate-100 text-[#475569] hover:text-[#0F172A]"
                   title="Vừa màn hình (Fit)"
                 >
@@ -1167,7 +1443,7 @@ export default function AnalystPage() {
               {/* Legend (Chú Giải) Nổi Góc Dưới Trái */}
               <div className="absolute bottom-4 left-4 z-10 bg-white/95 backdrop-blur-md p-3 rounded-[12px] border border-[#E2E8F0] shadow-md max-w-xs text-xs space-y-2">
                 <div className="font-semibold text-[#0F172A] text-[11px] uppercase tracking-wider flex items-center justify-between">
-                  <span>Chú giải đồ thị</span>
+                  <span>Hình dạng & Màu sắc</span>
                   <span className="text-[10px] text-slate-400 font-normal">Kích thước ~ PageRank</span>
                 </div>
 
@@ -1175,15 +1451,15 @@ export default function AnalystPage() {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
-                    <span className="text-[11px] text-[#475569]">User</span>
+                    <span className="text-[11px] text-[#475569]">User (Tròn)</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#F97316]" />
-                    <span className="text-[11px] text-[#475569]">Post</span>
+                    <span className="w-3 h-2 rounded bg-[#F97316]" />
+                    <span className="text-[11px] text-[#475569]">Post (Hộp)</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#8B5CF6]" />
-                    <span className="text-[11px] text-[#475569]">Topic</span>
+                    <span className="w-2.5 h-2.5 rotate-45 bg-[#8B5CF6]" />
+                    <span className="text-[11px] text-[#475569]">Topic (Thoi)</span>
                   </div>
                 </div>
 
@@ -1216,385 +1492,345 @@ export default function AnalystPage() {
               {/* Banner Chỉ Số Hiệu Năng Đồ Thị */}
               <div className="absolute bottom-4 right-4 z-10 px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-xs border border-[#E2E8F0] shadow-xs text-[11px] text-[#64748B] flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Hiển thị {graphData.nodes.length} node • LOD Tự động</span>
-              </div>
-            </div>
-          )}
-
-          {/* VÙNG 3: BIỂU ĐỒ THỐNG KÊ (HIỂN THỊ KHI VIEWMODE === 'ANALYTICS') */}
-          {viewMode === 'analytics' && (
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Thẻ Thống Kê Tổng Quan */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
-                  <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
-                    <span>Tổng Đỉnh (Nodes)</span>
-                    <Users className="h-4 w-4 text-[#2563EB]" />
-                  </div>
-                  <div className="text-2xl font-bold tabular-nums text-[#0F172A]">
-                    {stats?.totalNodes?.toLocaleString('vi-VN') || '40.050'}
-                  </div>
-                  <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3" />
-                    <span>+8.4% so với tuần trước</span>
-                  </div>
-                </div>
-
-                <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
-                  <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
-                    <span>Tổng Cạnh Quan Hệ (Edges)</span>
-                    <Share2 className="h-4 w-4 text-[#F97316]" />
-                  </div>
-                  <div className="text-2xl font-bold tabular-nums text-[#0F172A]">
-                    {stats?.totalEdges?.toLocaleString('vi-VN') || '386.500'}
-                  </div>
-                  <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3" />
-                    <span>+15.2% tương tác mới</span>
-                  </div>
-                </div>
-
-                <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
-                  <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
-                    <span>Số Cụm Cộng Đồng (WCC)</span>
-                    <Layers className="h-4 w-4 text-[#8B5CF6]" />
-                  </div>
-                  <div className="text-2xl font-bold tabular-nums text-[#0F172A]">
-                    {communitiesList.length || 6} cụm
-                  </div>
-                  <div className="text-[11px] text-[#64748B]">Độ phân rã đồ thị chuẩn modularity</div>
-                </div>
-              </div>
-
-              {/* Biểu đồ cột Tương tác theo Chủ đề (UC-10, UC-16) */}
-              <div className="bg-white p-5 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold text-[#0F172A]">
-                      Tương tác theo Chủ đề thảo luận (UC-10)
-                    </h2>
-                    <p className="text-xs text-[#64748B] mt-0.5">
-                      So sánh lượt Thích (Like), Bình luận (Comment) và Chia sẻ trên các Topic hàng đầu
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 bg-[#F1F5F9] p-1 rounded-lg text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setChartMetric('all')}
-                      className={`px-2 py-0.5 rounded font-medium ${
-                        chartMetric === 'all' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-[#64748B]'
-                      }`}
-                    >
-                      Tất cả
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChartMetric('likes')}
-                      className={`px-2 py-0.5 rounded font-medium ${
-                        chartMetric === 'likes' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-[#64748B]'
-                      }`}
-                    >
-                      Chỉ Like
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChartMetric('comments')}
-                      className={`px-2 py-0.5 rounded font-medium ${
-                        chartMetric === 'comments' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-[#64748B]'
-                      }`}
-                    >
-                      Chỉ Comment
-                    </button>
-                  </div>
-                </div>
-
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={trendingTopics} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <RechartsTooltip
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderRadius: '8px',
-                          border: 'none',
-                          color: '#FFFFFF',
-                          fontSize: '12px',
-                        }}
-                      />
-                      {(chartMetric === 'all' || chartMetric === 'likes') && (
-                        <Bar dataKey="likes" name="Lượt Thích" fill="#2563EB" radius={[4, 4, 0, 0]} />
-                      )}
-                      {(chartMetric === 'all' || chartMetric === 'comments') && (
-                        <Bar dataKey="comments" name="Bình luận" fill="#F97316" radius={[4, 4, 0, 0]} />
-                      )}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Biểu đồ phân phối bậc (Degree Distribution) */}
-              <div className="bg-white p-5 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-4">
-                <div>
-                  <h2 className="text-sm font-semibold text-[#0F172A]">
-                    Phân phối bậc đồ thị (Degree Distribution)
-                  </h2>
-                  <p className="text-xs text-[#64748B] mt-0.5">
-                    Phân bố số lượng liên kết theo luật hàm mũ (Power-law distribution) điển hình của mạng xã hội
-                  </p>
-                </div>
-
-                <div className="h-56 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={stats?.degreeBuckets || [
-                        { bucket: '1-5', count: 4800 },
-                        { bucket: '6-15', count: 2600 },
-                        { bucket: '16-30', count: 1400 },
-                        { bucket: '31-60', count: 750 },
-                        { bucket: '61-120', count: 320 },
-                        { bucket: '>120', count: 80 },
-                      ]}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 10 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <RechartsTooltip
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderRadius: '8px',
-                          border: 'none',
-                          color: '#FFFFFF',
-                          fontSize: '12px',
-                        }}
-                      />
-                      <Bar dataKey="count" name="Số lượng Node" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <span>Hiển thị {graphData.nodes.length} node thực tế từ FalkorDB</span>
               </div>
             </div>
           )}
         </main>
 
         {/* ------------------------------------------------------ */}
-        {/* CỘT PHẢI: CHỈ SỐ & CHI TIẾT (340PX)                   */}
+        {/* CỘT PHẢI: CHUYÊN BIỆT HÓA THEO TỪNG TAB (340PX)        */}
         {/* ------------------------------------------------------ */}
         {isRightVisible && (
-          <aside className="w-[340px] bg-white border-l border-[#E2E8F0] shrink-0 flex flex-col justify-between overflow-y-auto p-4 space-y-4 z-20">
-            {/* WIDGET 1: LƯỚI THẺ CHỈ SỐ TỔNG QUAN 2x2 (UC-16) */}
-            <div className="space-y-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-                Chỉ số tổng quan (UC-16)
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-3 bg-[#F8FAFC] rounded-[10px] border border-[#E2E8F0] space-y-1">
-                  <div className="text-[11px] text-[#64748B] flex items-center justify-between">
-                    <span>Tổng User</span>
-                    <Users className="h-3.5 w-3.5 text-[#2563EB]" />
+          <aside className="w-[340px] bg-white border-l border-[#E2E8F0] shrink-0 flex flex-col justify-between overflow-y-auto p-4 space-y-4 z-20 animate-in fade-in duration-150">
+            {/* 1. KHI Ở TAB "TỔNG QUAN" (UC-16): HIỂN THỊ CẤU TRÚC VĨ MÔ & MA TRẬN QUAN HỆ */}
+            {activeMenu === 'overview' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                    Phân bố Ma trận Quan hệ
                   </div>
-                  <div className="text-base font-bold tabular-nums text-[#0F172A]">
-                    {stats?.nodes?.User?.toLocaleString('vi-VN') || '10.000'}
+                  <div className="space-y-1.5 text-xs">
+                    {[
+                      { name: 'FOLLOWS (Theo dõi)', count: 150000, color: 'bg-[#64748B]', pct: '38.8%' },
+                      { name: 'LIKED (Thích bài viết)', count: 90000, color: 'bg-[#EC4899]', pct: '23.3%' },
+                      { name: 'ABOUT (Chủ đề bài viết)', count: 60000, color: 'bg-[#A855F7]', pct: '15.5%' },
+                      { name: 'POSTED (Tác giả đăng bài)', count: 30000, color: 'bg-[#F97316]', pct: '7.8%' },
+                      { name: 'INTERESTED_IN (Quan tâm)', count: 25000, color: 'bg-[#2563EB]', pct: '6.5%' },
+                      { name: 'COMMENTED (Bình luận)', count: 22500, color: 'bg-emerald-600', pct: '5.8%' },
+                      { name: 'SHARED (Chia sẻ)', count: 9000, color: 'bg-amber-600', pct: '2.3%' },
+                    ].map((item) => (
+                      <div key={item.name} className="p-2 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-[#0F172A]">{item.name}</span>
+                          <span className="font-semibold tabular-nums text-[#2563EB]">{item.pct}</span>
+                        </div>
+                        <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-full ${item.color}`} style={{ width: item.pct }} />
+                        </div>
+                        <div className="text-[10px] text-[#64748B]">{item.count.toLocaleString('vi-VN')} liên kết</div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-[10px] text-emerald-600 font-medium">↑ +4.2% tuần này</div>
                 </div>
 
-                <div className="p-3 bg-[#F8FAFC] rounded-[10px] border border-[#E2E8F0] space-y-1">
-                  <div className="text-[11px] text-[#64748B] flex items-center justify-between">
-                    <span>Tổng Post</span>
-                    <FileText className="h-3.5 w-3.5 text-[#F97316]" />
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-[10px] text-xs text-blue-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <Info className="h-4 w-4 text-[#2563EB]" />
+                    <span>Ý nghĩa phân tích vĩ mô</span>
                   </div>
-                  <div className="text-base font-bold tabular-nums text-[#0F172A]">
-                    {stats?.nodes?.Post?.toLocaleString('vi-VN') || '30.000'}
-                  </div>
-                  <div className="text-[10px] text-emerald-600 font-medium">↑ +11.8% bài mới</div>
-                </div>
-
-                <div className="p-3 bg-[#F8FAFC] rounded-[10px] border border-[#E2E8F0] space-y-1">
-                  <div className="text-[11px] text-[#64748B] flex items-center justify-between">
-                    <span>Quan hệ</span>
-                    <Share2 className="h-3.5 w-3.5 text-[#8B5CF6]" />
-                  </div>
-                  <div className="text-base font-bold tabular-nums text-[#0F172A]">
-                    {stats?.totalEdges?.toLocaleString('vi-VN') || '386.500'}
-                  </div>
-                  <div className="text-[10px] text-emerald-600 font-medium">↑ +18.5% kết nối</div>
-                </div>
-
-                <div className="p-3 bg-[#F8FAFC] rounded-[10px] border border-[#E2E8F0] space-y-1">
-                  <div className="text-[11px] text-[#64748B] flex items-center justify-between">
-                    <span>Độ trễ Cypher</span>
-                    <Zap className="h-3.5 w-3.5 text-amber-500" />
-                  </div>
-                  <div className="text-base font-bold tabular-nums text-[#0F172A]">
-                    14.2 ms
-                  </div>
-                  <div className="text-[10px] text-emerald-600 font-medium">↓ Tối ưu -22%</div>
-                </div>
-              </div>
-            </div>
-
-            {/* WIDGET 2: CHI TIẾT THỰC THỂ (INSPECTOR - UC-04) */}
-            <div className="pt-3 border-t border-[#E2E8F0] space-y-2.5">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B] flex items-center justify-between">
-                <span>Chi tiết thực thể (Inspector)</span>
-                {selectedNode && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedNode(null)}
-                    className="text-[10px] text-[#64748B] hover:text-red-600"
-                  >
-                    Bỏ chọn
-                  </button>
-                )}
-              </div>
-
-              {!selectedNode ? (
-                <div className="p-6 bg-[#F8FAFC] border border-dashed border-[#CBD5E1] rounded-[12px] text-center space-y-2">
-                  <CircleDot className="h-6 w-6 text-[#94A3B8] mx-auto stroke-[1.5]" />
-                  <div className="text-xs font-medium text-[#475569]">Chưa chọn đỉnh nào</div>
-                  <p className="text-[11px] text-[#64748B]">
-                    Nhấp vào một node trên đồ thị để kiểm tra thuộc tính, PageRank và cộng đồng.
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    Mạng xã hội có mật độ tương tác lành mạnh. Số lượng liên kết FOLLOWS và LIKED chiếm hơn 60% tổng cạnh, phản ánh sự gắn kết người dùng cao.
                   </p>
                 </div>
-              ) : (
-                <div className="p-3.5 bg-white border border-[#E2E8F0] rounded-[12px] shadow-xs space-y-3 animate-in fade-in zoom-in-95 duration-100">
-                  {/* Entity Header */}
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] flex items-center justify-center font-bold text-[#2563EB] text-sm shrink-0">
-                      {selectedNode.username?.charAt(0).toUpperCase() || selectedNode.type?.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-xs text-[#0F172A] truncate">
-                        {selectedNode.fullName || selectedNode.label}
-                      </div>
-                      <div className="text-[11px] text-[#64748B] truncate">
-                        ID: {selectedNode.id}
-                      </div>
-                    </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#F1F5F9] text-[#475569]">
-                      {selectedNode.type}
-                    </span>
-                  </div>
+              </div>
+            )}
 
-                  {/* Properties Table */}
-                  <div className="space-y-1.5 text-xs">
-                    {selectedNode.followers !== undefined && (
-                      <div className="flex items-center justify-between py-1 border-b border-[#F1F5F9]">
-                        <span className="text-[#64748B]">Người theo dõi:</span>
-                        <span className="font-semibold text-[#0F172A] tabular-nums">
-                          {selectedNode.followers?.toLocaleString('vi-VN')}
-                        </span>
+            {/* 2. KHI Ở TAB "KHÁM PHÁ" (UC-04): HIỂN THỊ INSPECTOR ĐỈNH ĐANG CHỌN */}
+            {activeMenu === 'explore' && (
+              <div className="space-y-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B] flex items-center justify-between">
+                  <span>Inspector Thực thể (UC-04)</span>
+                  {selectedNode && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedNode(null)}
+                      className="text-[10px] text-[#64748B] hover:text-red-600"
+                    >
+                      Bỏ chọn
+                    </button>
+                  )}
+                </div>
+
+                {!selectedNode ? (
+                  <div className="p-6 bg-[#F8FAFC] border border-dashed border-[#CBD5E1] rounded-[12px] text-center space-y-2">
+                    <CircleDot className="h-6 w-6 text-[#94A3B8] mx-auto stroke-[1.5]" />
+                    <div className="text-xs font-medium text-[#475569]">Chọn một đỉnh trên đồ thị</div>
+                    <p className="text-[11px] text-[#64748B]">
+                      Nhấp vào đỉnh người dùng, bài viết hoặc chủ đề để truy vết mối quan hệ và thuộc tính chi tiết.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3.5 bg-white border border-[#E2E8F0] rounded-[12px] shadow-xs space-y-3 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] flex items-center justify-center font-bold text-[#2563EB] text-sm shrink-0">
+                        {selectedNode.username?.charAt(0).toUpperCase() || selectedNode.type?.charAt(0)}
                       </div>
-                    )}
-                    {selectedNode.pagerank !== undefined && (
-                      <div className="py-1 border-b border-[#F1F5F9] space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[#64748B]">Điểm PageRank:</span>
-                          <span className="font-semibold text-[#2563EB] tabular-nums">
-                            {(selectedNode.pagerank * 100).toFixed(2)}%
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-xs text-[#0F172A] truncate">
+                          {selectedNode.fullName || selectedNode.label}
+                        </div>
+                        <div className="text-[11px] text-[#64748B] truncate">
+                          ID: {selectedNode.id}
+                        </div>
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#F1F5F9] text-[#475569]">
+                        {selectedNode.type}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      {selectedNode.content && (
+                        <div className="p-2 bg-slate-50 rounded border border-[#E2E8F0] text-[11px] text-[#334155]">
+                          "{selectedNode.content}"
+                        </div>
+                      )}
+                      {selectedNode.followers !== undefined && (
+                        <div className="flex items-center justify-between py-1 border-b border-[#F1F5F9]">
+                          <span className="text-[#64748B]">Người theo dõi:</span>
+                          <span className="font-semibold text-[#0F172A] tabular-nums">
+                            {selectedNode.followers?.toLocaleString('vi-VN')}
                           </span>
                         </div>
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-[#2563EB] rounded-full"
-                            style={{ width: `${Math.min(100, selectedNode.pagerank * 200)}%` }}
-                          />
+                      )}
+                      {selectedNode.pagerank !== undefined && (
+                        <div className="py-1 border-b border-[#F1F5F9] space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[#64748B]">PageRank:</span>
+                            <span className="font-semibold text-[#2563EB] tabular-nums">
+                              {(selectedNode.pagerank * 100).toFixed(2)}%
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#2563EB] rounded-full" style={{ width: `${Math.min(100, selectedNode.pagerank * 200)}%` }} />
+                          </div>
+                        </div>
+                      )}
+                      {selectedNode.community !== undefined && (
+                        <div className="flex items-center justify-between py-1 border-b border-[#F1F5F9]">
+                          <span className="text-[#64748B]">Cộng đồng WCC:</span>
+                          <span
+                            className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
+                            style={{ backgroundColor: selectedNode.communityColor || '#2563EB' }}
+                          >
+                            Cụm #{selectedNode.community}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleExpandNeighborhood(selectedNode.id)}
+                        className="h-7 px-2 bg-[#F8FAFC] hover:bg-slate-100 border border-[#CBD5E1] rounded-[8px] text-[11px] font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Sparkles className="h-3 w-3 text-[#2563EB]" />
+                        <span>Mở rộng 1-hop</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedNode.username) {
+                            setPathSource(selectedNode.username);
+                            setActiveMenu('shortest_path');
+                            showToast(`Đã đặt @${selectedNode.username} làm điểm A`);
+                          }
+                        }}
+                        className="h-7 px-2 bg-[#F8FAFC] hover:bg-slate-100 border border-[#CBD5E1] rounded-[8px] text-[11px] font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <RouteIcon className="h-3 w-3 text-[#F97316]" />
+                        <span>Đặt điểm A</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3. KHI Ở TAB "KOLS & PAGERANK" (UC-13): BẢNG XẾP HẠNG QUYỀN LỰC */}
+            {activeMenu === 'pagerank' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                    Xếp hạng Quyền lực PageRank (UC-13)
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 font-bold">
+                    Top Influencers
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {kolsList.map((kol) => (
+                    <div
+                      key={kol.id}
+                      onClick={() => handleFocusNode(kol.username)}
+                      className="p-2 rounded-[8px] border border-[#E2E8F0] bg-white hover:bg-amber-50/50 cursor-pointer flex items-center justify-between transition-colors text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            kol.rank === 1
+                              ? 'bg-amber-400 text-amber-950 ring-1 ring-amber-500'
+                              : kol.rank === 2
+                              ? 'bg-slate-300 text-slate-800'
+                              : kol.rank === 3
+                              ? 'bg-amber-700 text-white'
+                              : 'bg-slate-100 text-[#64748B]'
+                          }`}
+                        >
+                          {kol.rank}
+                        </span>
+                        <div>
+                          <div className="font-semibold text-[#0F172A]">@{kol.username}</div>
+                          <div className="text-[10px] text-[#64748B]">{kol.fullName}</div>
                         </div>
                       </div>
-                    )}
-                    {selectedNode.community !== undefined && (
-                      <div className="flex items-center justify-between py-1 border-b border-[#F1F5F9]">
-                        <span className="text-[#64748B]">ID Cộng đồng (WCC):</span>
-                        <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
-                          style={{ backgroundColor: selectedNode.communityColor || '#2563EB' }}
-                        >
-                          Cụm #{selectedNode.community}
-                        </span>
+
+                      <div className="text-right">
+                        <div className="font-semibold text-[#2563EB] tabular-nums text-[11px]">
+                          PR: {(kol.pagerank * 100).toFixed(2)}%
+                        </div>
+                        <div className="text-[10px] text-[#64748B] tabular-nums">
+                          {kol.followers?.toLocaleString('vi-VN')} flw
+                        </div>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="grid grid-cols-2 gap-1.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleExpandNeighborhood(selectedNode.id)}
-                      className="h-7 px-2 bg-[#F8FAFC] hover:bg-slate-100 border border-[#CBD5E1] rounded-[8px] text-[11px] font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
-                    >
-                      <Sparkles className="h-3 w-3 text-[#2563EB]" />
-                      <span>Mở rộng</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (selectedNode.username) {
-                          setPathSource(selectedNode.username);
-                          setActiveMenu('shortest_path');
-                          showToast(`Đã đặt @${selectedNode.username} làm điểm A`);
-                        }
-                      }}
-                      className="h-7 px-2 bg-[#F8FAFC] hover:bg-slate-100 border border-[#CBD5E1] rounded-[8px] text-[11px] font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
-                    >
-                      <RouteIcon className="h-3 w-3 text-[#F97316]" />
-                      <span>Đặt điểm A</span>
-                    </button>
-                  </div>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
 
-            {/* WIDGET 3: BẢNG XẾP HẠNG TOP KOLS & CỘNG ĐỒNG (UC-13, UC-14) */}
-            <div className="pt-3 border-t border-[#E2E8F0] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-                  Bảng xếp hạng (UC-13)
-                </span>
-                <span className="text-[10px] text-[#2563EB] font-medium">PageRank Top</span>
+                <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-[10px] text-xs text-amber-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-amber-950">
+                    <Award className="h-4 w-4 text-amber-600" />
+                    <span>Lợi ích cho Nhà phân tích</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Giúp phân biệt giữa người có uy tín thật sự (được cộng đồng học thuật/chuyên gia follow) với tài khoản có nhiều follower nhưng ít kết nối chất lượng.
+                  </p>
+                </div>
               </div>
+            )}
 
-              <div className="space-y-1.5">
-                {kolsList.slice(0, 6).map((kol) => (
-                  <div
-                    key={kol.id}
-                    onClick={() => handleFocusNode(kol.username)}
-                    className="p-2 rounded-[8px] border border-[#E2E8F0] bg-white hover:bg-[#F8FAFC] cursor-pointer flex items-center justify-between transition-colors text-xs"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                          kol.rank === 1
-                            ? 'bg-amber-400 text-amber-950'
-                            : kol.rank === 2
-                            ? 'bg-slate-300 text-slate-800'
-                            : kol.rank === 3
-                            ? 'bg-amber-700 text-white'
-                            : 'bg-slate-100 text-[#64748B]'
+            {/* 4. KHI Ở TAB "BẢN ĐỒ CỘNG ĐỒNG" (UC-14): PHÂN TÍCH CỤM WCC */}
+            {activeMenu === 'communities' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                    Phân Tích Cụm Cộng Đồng (UC-14)
+                  </span>
+                  <span className="text-[10px] text-[#8B5CF6] font-bold">WCC Modularity</span>
+                </div>
+
+                <div className="space-y-2">
+                  {communitiesList.map((c) => {
+                    const cid = String(c.id);
+                    const color = COMMUNITY_COLORS[(Number(c.id) - 1) % COMMUNITY_COLORS.length];
+                    const isHighlighted = activeCommunityHighlight === cid;
+                    const pct = ((c.size / 10000) * 100).toFixed(1);
+
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => handleHighlightCommunity(cid)}
+                        className={`p-2.5 rounded-[10px] border cursor-pointer transition-all text-xs space-y-1.5 ${
+                          isHighlighted
+                            ? 'bg-[#EFF6FF] border-[#2563EB] shadow-xs'
+                            : 'bg-white border-[#E2E8F0] hover:bg-slate-50'
                         }`}
                       >
-                        {kol.rank}
-                      </span>
-                      <div>
-                        <div className="font-semibold text-[#0F172A]">@{kol.username}</div>
-                        <div className="text-[10px] text-[#64748B]">{kol.fullName}</div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                            <span className="font-semibold text-[#0F172A]">Cộng đồng #{c.id}</span>
+                          </div>
+                          <span className="font-bold text-[#2563EB] tabular-nums">{pct}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full" style={{ backgroundColor: color, width: `${pct}%` }} />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-[#64748B]">
+                          <span>{c.size.toLocaleString('vi-VN')} thành viên</span>
+                          <span>{isHighlighted ? 'Đang cô lập' : 'Bấm để lọc'}</span>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })}
+                </div>
 
-                    <div className="text-right">
-                      <div className="font-semibold text-[#2563EB] tabular-nums text-[11px]">
-                        PR: {(kol.pagerank * 100).toFixed(1)}%
-                      </div>
-                      <div className="text-[10px] text-[#64748B] tabular-nums">
-                        {kol.followers?.toLocaleString('vi-VN')} flw
-                      </div>
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-[10px] text-xs text-purple-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-purple-950">
+                    <Layers className="h-4 w-4 text-purple-600" />
+                    <span>Lợi ích cho Nhà phân tích</span>
+                  </div>
+                  <p className="text-[11px] text-purple-800 leading-relaxed">
+                    Phát hiện các buồng vang (echo chambers), giúp đội ngũ tiếp thị hoặc kiểm duyệt nhắm đúng nhóm đối tượng người dùng có chung mối quan tâm.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 5. KHI Ở TAB "ĐƯỜNG ĐI NGẮN NHẤT" (UC-09): LỘ TRÌNH ĐIỀU TRA */}
+            {activeMenu === 'shortest_path' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                    Lộ Trình Điều Tra (UC-09)
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-bold">
+                    6 Bậc Cách Biệt
+                  </span>
+                </div>
+
+                {pathResult ? (
+                  <div className="p-3 bg-white border border-[#E2E8F0] rounded-[10px] space-y-2 text-xs">
+                    <div className="font-semibold text-emerald-700 flex items-center gap-1.5">
+                      <Check className="h-4 w-4 text-emerald-600" />
+                      <span>Tìm thấy đường đi: {pathResult.length} bước</span>
+                    </div>
+                    <div className="space-y-1 pt-1">
+                      {pathResult.steps?.map((step, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-xs">
+                          <span className="w-5 h-5 rounded-full bg-slate-100 text-[#475569] font-bold text-[10px] flex items-center justify-center">
+                            {idx + 1}
+                          </span>
+                          <span className="font-mono font-medium text-[#0F172A]">@{step}</span>
+                          {idx === 0 && <span className="text-[10px] text-slate-400">(Khởi đầu)</span>}
+                          {idx === pathResult.steps.length - 1 && <span className="text-[10px] text-emerald-600">(Đích)</span>}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
+                ) : (
+                  <div className="p-5 bg-[#F8FAFC] border border-dashed border-[#CBD5E1] rounded-[10px] text-center space-y-2 text-xs">
+                    <RouteIcon className="h-6 w-6 text-[#94A3B8] mx-auto" />
+                    <div className="font-medium text-[#475569]">Chưa có kết quả điều tra</div>
+                    <p className="text-[11px] text-[#64748B]">
+                      Nhập Người dùng A và B ở thanh công cụ phía trên rồi nhấn "Phân tích" để tìm chuỗi trung gian.
+                    </p>
+                  </div>
+                )}
+
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-[10px] text-xs text-rose-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-rose-950">
+                    <RouteIcon className="h-4 w-4 text-rose-600" />
+                    <span>Lợi ích cho Nhà phân tích</span>
+                  </div>
+                  <p className="text-[11px] text-rose-800 leading-relaxed">
+                    Xác minh mối quan hệ giữa 2 cá nhân nghi vấn, phát hiện mạng lưới chân rết hoặc gợi ý người trung gian uy tín để kết nối kinh doanh.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </aside>
         )}
       </div>
