@@ -7,7 +7,7 @@ export async function ensureAdminAuth() {
   let user = null;
   try {
     user = JSON.parse(userStr);
-  } catch {}
+  } catch { }
   if (!user || user.role !== 'admin' || !localStorage.getItem(TOKEN_KEY)) {
     await authService.ensureSession('admin');
   }
@@ -32,7 +32,7 @@ export const adminApi = {
           if (retryRes.data?.ok && retryRes.data?.data) {
             return retryRes.data.data;
           }
-        } catch {}
+        } catch { }
       }
       console.warn('API /stats error, fallback mock:', err.message);
     }
@@ -48,7 +48,7 @@ export const adminApi = {
   },
 
   // 2. Quản lý Người dùng (UC-05)
-  getUsers: async ({ q = '', page = 1, limit = 20 } = {}) => {
+  getUsers: async ({ q = '', page = 1, limit = 10 } = {}) => {
     try {
       await ensureAdminAuth();
       const res = await api.get('/users', { params: { q, page, limit } });
@@ -63,7 +63,7 @@ export const adminApi = {
           if (retryRes.data?.ok && retryRes.data?.data) {
             return retryRes.data.data;
           }
-        } catch {}
+        } catch { }
       }
       console.warn('API /users error, fallback mock:', err.message);
     }
