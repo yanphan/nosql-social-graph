@@ -132,7 +132,7 @@ export default function AdminPage() {
       await adminApi.ensureAdminAuth();
       const [sData, uData, tData, pData, bData] = await Promise.all([
         adminApi.getStats(),
-        adminApi.getUsers({ page: targetPage, limit: 50 }),
+        adminApi.getUsers({ page: targetPage, limit: 20 }),
         adminApi.getTopics(),
         adminApi.getPosts({ limit: 50 }),
         adminApi.getBackups(),
@@ -155,7 +155,7 @@ export default function AdminPage() {
     setUserPage(newPage);
     setLoading(true);
     try {
-      const uData = await adminApi.getUsers({ page: newPage, limit: 50 });
+      const uData = await adminApi.getUsers({ page: newPage, limit: 20 });
       setUsersList(uData.items || []);
       setUserHasMore(Boolean(uData.hasMore));
     } catch (e) {

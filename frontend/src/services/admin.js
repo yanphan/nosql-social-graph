@@ -48,7 +48,7 @@ export const adminApi = {
   },
 
   // 2. Quản lý Người dùng (UC-05)
-  getUsers: async ({ q = '', page = 1, limit = 50 } = {}) => {
+  getUsers: async ({ q = '', page = 1, limit = 20 } = {}) => {
     try {
       await ensureAdminAuth();
       const res = await api.get('/users', { params: { q, page, limit } });
