@@ -40,14 +40,17 @@ export const analytics = {
     MATCH (me:User {id:$uid})-[i:INTERESTED_IN]->(t:Topic)<-[:ABOUT]-(p:Post)<-[:POSTED]-(a:User)
     WHERE NOT (me)-[:LIKED]->(p) AND a.id <> $uid
     OPTIONAL MATCH (me)-[:FOLLOWS]->(f:User)-[:LIKED]->(p)
-    WITH p, a, max(i.score) AS interest, count(DISTINCT f) AS friendLikes
-    RETURN p, a.id AS authorId, a.username AS authorUsername,
-           friendLikes, interest, friendLikes*2 + interest*3 AS score
+    OPTIONAL MATCH (p)-[:ABOUT]->(top:Topic)
+    WITH p, a, collect(DISTINCT top.name) AS topics, max(i.score) AS interest, count(DISTINCT f) AS friendLikes
+    RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
+           topics, friendLikes, interest, friendLikes*2 + interest*3 AS score
     ORDER BY score DESC, p.createdAt DESC LIMIT $limit`,
 
   // Cold start: bài có nhiều like nhất trong cửa sổ thời gian
   popularPosts: `MATCH (a:User)-[:POSTED]->(p:Post) WHERE p.createdAt >= $since
-    RETURN p, a.id AS authorId, a.username AS authorUsername, 0 AS friendLikes, 0 AS interest, p.likeCount AS score
+    OPTIONAL MATCH (p)-[:ABOUT]->(top:Topic)
+    RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
+           collect(DISTINCT top.name) AS topics, 0 AS friendLikes, 0 AS interest, p.likeCount AS score
     ORDER BY p.likeCount DESC LIMIT $limit`,
 
   // BT5

@@ -38,7 +38,9 @@ import {
   UserCheck, 
   LogOut, 
   ShieldCheck,
-  Send
+  Send,
+  Sparkles,
+  Clock
 } from 'lucide-react';
 import { getTopicColor } from '@/lib/topicColor';
 import '@/styles/tokens.css';
@@ -56,19 +58,32 @@ export default function MainLayout() {
   const [topicTab, setTopicTab] = useState('trending'); // 'trending' | 'mine'
   const [unreadCount] = useState(3);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [feedMode, setFeedMode] = useState('forYou'); // 'forYou' | 'latest'
 
   // Feed posts state
   const [postsList, setPostsList] = useState(() => mockApi.getPosts({}));
   const friendSuggestions = mockApi.getFriendSuggestions(currentUser.id);
 
-  // Load real posts from FalkorDB backend
+  // Load real posts from FalkorDB backend (Chế độ Gợi ý đồ thị hoặc Mới nhất)
   useEffect(() => {
-    postsService.getPosts({ topic: selectedTopic || undefined, limit: 30 }).then((data) => {
-      if (data?.items && data.items.length > 0) {
-        setPostsList(data.items);
-      }
-    });
-  }, [selectedTopic]);
+    if (feedMode === 'forYou' && !selectedTopic) {
+      postsService.getRecommendPosts(30).then((items) => {
+        if (items && items.length > 0) {
+          setPostsList(items);
+        } else {
+          postsService.getPosts({ limit: 30 }).then((data) => {
+            if (data?.items) setPostsList(data.items);
+          });
+        }
+      });
+    } else {
+      postsService.getPosts({ topic: selectedTopic || undefined, limit: 30 }).then((data) => {
+        if (data?.items && data.items.length > 0) {
+          setPostsList(data.items);
+        }
+      });
+    }
+  }, [feedMode, selectedTopic]);
 
   // Real backend topics states
   const [trendingTopics, setTrendingTopics] = useState([]);
@@ -417,6 +432,35 @@ export default function MainLayout() {
               >
                 <Plus className="h-4 w-4" />
                 <span>Đăng bài</span>
+              </button>
+            </div>
+
+            {/* 2 TABS CHUYỂN ĐỔI CHẾ ĐỘ BẢNG TIN: Dành cho bạn (Gợi ý đồ thị BT4) | Mới nhất */}
+            <div className="flex items-center gap-1.5 p-1 bg-white border border-[#E5E9F0] rounded-[12px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] w-fit animate-fade-up">
+              <button
+                onClick={() => {
+                  setFeedMode('forYou');
+                  setSelectedTopic(null);
+                }}
+                className={`text-xs px-3.5 py-1.5 rounded-[8px] font-semibold transition-all duration-150 btn-press flex items-center gap-1.5 ${
+                  feedMode === 'forYou' && !selectedTopic
+                    ? 'bg-[#EFF4FF] text-[#2563EB] shadow-2xs'
+                    : 'text-[#64748B] hover:text-[#0F172A]'
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Dành cho bạn</span>
+              </button>
+              <button
+                onClick={() => setFeedMode('latest')}
+                className={`text-xs px-3.5 py-1.5 rounded-[8px] font-semibold transition-all duration-150 btn-press flex items-center gap-1.5 ${
+                  feedMode === 'latest' || selectedTopic
+                    ? 'bg-[#EFF4FF] text-[#2563EB] shadow-2xs'
+                    : 'text-[#64748B] hover:text-[#0F172A]'
+                }`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>Mới nhất</span>
               </button>
             </div>
 

@@ -147,6 +147,13 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
                   Nổi bật
                 </span>
               )}
+
+              {/* Tag gợi ý bạn bè đã thích (Thuật toán đồ thị BT4) */}
+              {post.friendLikes > 0 && (
+                <span className="text-[11px] font-semibold px-2 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {post.friendLikes} bạn đã thích
+                </span>
+              )}
             </div>
             
             {/* Secondary text: 13px #64748B chuẩn AA */}

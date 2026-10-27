@@ -89,7 +89,9 @@ export async function postSuggestions(uid, limit = 10) {
         author: {
           id: r.authorId,
           username: r.authorUsername,
+          fullName: r.authorFullName ?? '',
         },
+        topics: Array.isArray(r.topics) ? r.topics : [],
       },
       friendLikes: Number(r.friendLikes ?? 0),
       interest: Number(r.interest ?? 0),
@@ -114,7 +116,9 @@ export async function popularPosts(since = 0, limit = 10) {
         author: {
           id: r.authorId,
           username: r.authorUsername,
+          fullName: r.authorFullName ?? '',
         },
+        topics: Array.isArray(r.topics) ? r.topics : [],
       },
       friendLikes: 0,
       interest: 0,
