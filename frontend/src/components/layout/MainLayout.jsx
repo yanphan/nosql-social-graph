@@ -7,6 +7,7 @@ import {
 } from '@/mock/mockData';
 import { authService } from '@/services/auth';
 import { topicsService } from '@/services/topics';
+import { postsService } from '@/services/posts';
 import PostCard from '@/components/post/PostCard';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -60,6 +61,15 @@ export default function MainLayout() {
   const [postsList, setPostsList] = useState(() => mockApi.getPosts({}));
   const friendSuggestions = mockApi.getFriendSuggestions(currentUser.id);
 
+  // Load real posts from FalkorDB backend
+  useEffect(() => {
+    postsService.getPosts({ topic: selectedTopic || undefined, limit: 30 }).then((data) => {
+      if (data?.items && data.items.length > 0) {
+        setPostsList(data.items);
+      }
+    });
+  }, [selectedTopic]);
+
   // Real backend topics states
   const [trendingTopics, setTrendingTopics] = useState([]);
   const [userInterests, setUserInterests] = useState([]);
@@ -96,26 +106,47 @@ export default function MainLayout() {
   };
 
   // Create post handler
-  const handleCreatePost = (e) => {
+  const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!newPostContent.trim()) return;
 
-    const topicObj = mockTopics.find((t) => t.name === newPostTopic) || (newPostTopic ? { id: `top_${Date.now()}`, name: newPostTopic } : null);
+    const cleanTopic = newPostTopic.trim().replace(/^#/, '');
+    const topicObj = cleanTopic ? { id: cleanTopic, name: cleanTopic } : null;
 
-    const createdPost = {
-      id: `post_${Date.now()}`,
-      authorId: currentUser.id,
-      author: currentUser,
-      content: newPostContent.trim(),
-      createdAt: Date.now(),
-      likeCount: 0,
-      shareCount: 0,
-      commentCount: 0,
-      topicNames: topicObj ? [topicObj.name] : [],
-      topics: topicObj ? [topicObj] : [],
-    };
+    try {
+      const created = await postsService.createPost({
+        content: newPostContent.trim(),
+        topics: cleanTopic ? [cleanTopic] : [],
+      });
 
-    setPostsList([createdPost, ...postsList]);
+      const newPost = {
+        ...created,
+        author: currentUser,
+        likeCount: 0,
+        shareCount: 0,
+        commentCount: 0,
+        topicNames: topicObj ? [topicObj.name] : [],
+        topics: topicObj ? [topicObj] : [],
+        createdAt: Date.now(),
+      };
+      setPostsList((prev) => [newPost, ...prev]);
+    } catch (err) {
+      console.warn('Lỗi tạo bài viết backend:', err.message);
+      const createdPost = {
+        id: `post_${Date.now()}`,
+        authorId: currentUser.id,
+        author: currentUser,
+        content: newPostContent.trim(),
+        createdAt: Date.now(),
+        likeCount: 0,
+        shareCount: 0,
+        commentCount: 0,
+        topicNames: topicObj ? [topicObj.name] : [],
+        topics: topicObj ? [topicObj] : [],
+      };
+      setPostsList([createdPost, ...postsList]);
+    }
+
     setNewPostContent('');
     setNewPostTopic('');
     setIsCreatePostOpen(false);

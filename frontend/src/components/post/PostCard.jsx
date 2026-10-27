@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Heart, 
   MessageCircle, 
@@ -17,11 +17,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { mockApi } from '@/mock/mockData';
+import { postsService } from '@/services/posts';
 import { getTopicColor } from '@/lib/topicColor';
 import '@/styles/tokens.css';
 
 export default function PostCard({ post, onTopicClick, currentUser, selectedTopic }) {
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(post.likedByMe ?? false);
   const [likeCount, setLikeCount] = useState(post.likeCount || 0);
   const [likeBounce, setLikeBounce] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
@@ -31,16 +32,38 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
   const [newComment, setNewComment] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Toggle Like with 150ms bounce animation
+  // Load real comments from FalkorDB backend if post is from backend
+  useEffect(() => {
+    if (post.id && !post.id.startsWith('post_mock')) {
+      postsService.getComments(post.id).then((res) => {
+        if (res?.items && res.items.length > 0) {
+          setComments(res.items.map((c, i) => ({
+            id: `cmt_${post.id}_${i}`,
+            author: {
+              fullName: c.username || 'Người dùng',
+              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.username || 'user'}&backgroundColor=b6e3f4`,
+            },
+            content: c.text,
+            createdAt: c.at,
+            likeCount: 0,
+          })));
+        }
+      });
+    }
+  }, [post.id]);
+
+  // Toggle Like with 150ms bounce animation & sync backend
   const handleLike = () => {
     if (liked) {
       setLiked(false);
       setLikeCount((c) => Math.max(0, c - 1));
+      postsService.unlikePost(post.id).catch(() => {});
     } else {
       setLiked(true);
       setLikeBounce(true);
       setTimeout(() => setLikeBounce(false), 200);
       setLikeCount((c) => c + 1);
+      postsService.likePost(post.id).catch(() => {});
     }
   };
 
@@ -77,6 +100,7 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
     setComments((prev) => [created, ...prev]);
     setNewComment('');
     setShowComments(true);
+    postsService.addComment(post.id, created.content).catch(() => {});
   };
 
   // Format thời gian ngắn gọn

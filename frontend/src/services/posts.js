@@ -11,7 +11,21 @@ export const postsService = {
 
       const res = await api.get('/posts', { params });
       if (res.data?.ok && res.data?.data) {
-        return res.data.data;
+        const data = res.data.data;
+        const enrichedItems = (data.items || []).map((p) => ({
+          ...p,
+          author: {
+            ...p.author,
+            fullName: p.author?.fullName || p.author?.username || 'Người dùng',
+            avatar: p.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.author?.username || p.author?.id || 'alice'}&backgroundColor=b6e3f4`,
+          },
+          topics: (p.topics || []).map((t) => (typeof t === 'string' ? { id: t, name: t } : t)),
+          topicNames: (p.topics || []).map((t) => (typeof t === 'string' ? t : t.name)),
+        }));
+        return {
+          ...data,
+          items: enrichedItems,
+        };
       }
     } catch (err) {
       console.warn('Lỗi gọi API /posts:', err.message);
