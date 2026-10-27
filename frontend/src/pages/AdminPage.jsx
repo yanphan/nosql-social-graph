@@ -913,6 +913,17 @@ export default function AdminPage() {
                 <span className="hidden lg:inline">Nhập/xuất &amp; sao lưu</span>
               </button>
 
+              <Link
+                to="/analytics"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-[10px] text-[13px] text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] transition-colors duration-150 btn-press"
+                title="Không gian Phân tích đồ thị"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Network className="h-4 w-4 text-[#2563EB] shrink-0" strokeWidth={1.5} />
+                  <span className="hidden lg:inline">Phân tích đồ thị</span>
+                </div>
+              </Link>
+
               <a
                 href="http://localhost:3000"
                 target="_blank"
