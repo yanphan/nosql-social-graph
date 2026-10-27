@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
@@ -15,9 +15,9 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Minimize2,
   Download,
   Share2,
-  Layers,
   Moon,
   Sun,
   ChevronLeft,
@@ -41,6 +41,10 @@ import {
   TrendingUp,
   Flame,
   Menu,
+  Workflow,
+  Copy,
+  Layers,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -74,6 +78,14 @@ export const COMMUNITY_COLORS = [
   '#EC4899', // 7. Hồng
   '#64748B', // 8. Xám slate
 ];
+
+// Hàm lấy màu cộng đồng an toàn tránh undefined khi id = 0 hoặc âm
+export const getSafeCommunityColor = (id) => {
+  const num = Number(id);
+  if (isNaN(num)) return COMMUNITY_COLORS[0];
+  const idx = ((num % COMMUNITY_COLORS.length) + COMMUNITY_COLORS.length) % COMMUNITY_COLORS.length;
+  return COMMUNITY_COLORS[idx];
+};
 
 // Màu node theo loại thực thể
 export const NODE_TYPE_COLORS = {
@@ -121,7 +133,7 @@ export const formatPctVi = (val, digits = 1) => {
   return `${formatDecimalVi(val, digits)}%`;
 };
 
-// Chuẩn hóa tên Topic hiển thị đúng ngữ nghĩa
+// Chuẩn hóa tên Topic
 export const normalizeTopicName = (rawName) => {
   if (!rawName) return '';
   const clean = String(rawName).trim().replace(/^#/, '');
@@ -146,15 +158,176 @@ export const normalizeTopicName = (rawName) => {
   return map[lower] || (clean.charAt(0).toUpperCase() + clean.slice(1));
 };
 
+// Xây dựng Cytoscape Stylesheet độc lập
+export function buildCytoscapeStyle(isDark, activeMenu) {
+  const isCommunityMode = activeMenu === 'communities';
+
+  return [
+    // Base node style
+    {
+      selector: 'node',
+      style: {
+        label: 'data(label)',
+        'font-family': 'Inter, system-ui, -apple-system, sans-serif',
+        'font-size': '11px',
+        'font-weight': 500,
+        color: isDark ? '#E2E8F0' : '#1E293B',
+        'text-valign': 'bottom',
+        'text-margin-y': 4,
+        'text-background-opacity': isDark ? 0.8 : 0.85,
+        'text-background-color': isDark ? '#0B1220' : '#FFFFFF',
+        'text-background-padding': '2px',
+        'text-background-shape': 'roundrectangle',
+        'min-zoomed-font-size': 9,
+        width: (ele) => {
+          const type = ele.data('type');
+          if (type === 'Topic') return 38;
+          if (type === 'Post') return 32;
+          const pr = Number(ele.data('pagerank') || 0.05);
+          return Math.max(24, Math.min(60, Math.round(24 + pr * 100)));
+        },
+        height: (ele) => {
+          const type = ele.data('type');
+          if (type === 'Topic') return 38;
+          if (type === 'Post') return 24;
+          const pr = Number(ele.data('pagerank') || 0.05);
+          return Math.max(24, Math.min(60, Math.round(24 + pr * 100)));
+        },
+        shape: (ele) => {
+          const type = ele.data('type');
+          if (type === 'Topic') return 'diamond';
+          if (type === 'Post') return 'round-rectangle';
+          return 'ellipse';
+        },
+        'background-color': (ele) => {
+          if (isCommunityMode) {
+            return ele.data('communityColor') || '#2563EB';
+          }
+          return NODE_TYPE_COLORS[ele.data('type')] || '#2563EB';
+        },
+        'border-width': 2,
+        'border-color': isDark ? '#1E293B' : '#FFFFFF',
+        'text-max-width': '90px',
+        'text-wrap': 'ellipsis',
+      },
+    },
+    // Topic Nodes
+    {
+      selector: 'node[type = "Topic"]',
+      style: {
+        'border-width': 3,
+        'border-color': '#FFFFFF',
+        'font-weight': 600,
+        'font-size': '12px',
+      },
+    },
+    // KOLs (Key Opinion Leaders) - Hào quang vàng hợp lệ (underlay-*, không dùng shadow-*)
+    {
+      selector: 'node.kol',
+      style: {
+        'border-width': 3,
+        'border-color': '#F59E0B',
+        'underlay-color': '#F59E0B',
+        'underlay-padding': 4,
+        'underlay-opacity': 0.45,
+        'underlay-shape': 'ellipse',
+        'font-weight': 600,
+      },
+    },
+    // Base edge style
+    {
+      selector: 'edge',
+      style: {
+        width: 1,
+        'line-color': (ele) => EDGE_COLORS[ele.data('type')] || '#94A3B8',
+        'target-arrow-color': (ele) => EDGE_COLORS[ele.data('type')] || '#94A3B8',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'arrow-scale': 0.7,
+        opacity: isDark ? 0.45 : 0.5,
+        'line-style': (ele) =>
+          ele.data('type') === 'ABOUT' || ele.data('type') === 'INTERESTED_IN' ? 'dashed' : 'solid',
+      },
+    },
+    // Hover edge effect
+    {
+      selector: 'edge.hovered',
+      style: {
+        width: 2.5,
+        opacity: 1,
+      },
+    },
+    // Selection state on node
+    {
+      selector: 'node:selected',
+      style: {
+        'border-width': 4,
+        'border-color': '#2563EB',
+        'underlay-color': '#2563EB',
+        'underlay-padding': 6,
+        'underlay-opacity': 0.5,
+      },
+    },
+    // Neighbor nodes of selected node
+    {
+      selector: 'node.neighbor',
+      style: {
+        opacity: 1,
+        'border-width': 2.5,
+        'border-color': '#3B82F6',
+      },
+    },
+    // Hidden state (Bộ lọc không relayout)
+    {
+      selector: '.hidden',
+      style: {
+        display: 'none',
+      },
+    },
+    // Dimmed state
+    {
+      selector: '.dimmed',
+      style: {
+        opacity: 0.08,
+      },
+    },
+    // Highlighted community nodes
+    {
+      selector: '.highlighted',
+      style: {
+        opacity: 1,
+        'border-width': 3.5,
+        'border-color': '#FFFFFF',
+        'underlay-color': '#3B82F6',
+        'underlay-padding': 5,
+        'underlay-opacity': 0.6,
+      },
+    },
+    // Shortest Path Highlighting
+    {
+      selector: '.path-highlighted',
+      style: {
+        opacity: 1,
+        'border-color': '#EAB308',
+        'border-width': 4,
+        'line-color': '#EAB308',
+        'target-arrow-color': '#EAB308',
+        width: 3.5,
+        'underlay-color': '#EAB308',
+        'underlay-padding': 5,
+        'underlay-opacity': 0.7,
+      },
+    },
+  ];
+}
+
 export default function AnalystPage() {
   const navigate = useNavigate();
   const [currentUser] = useState(() => authService.getStoredUser());
 
   // Navigation: 'overview' | 'explore' | 'pagerank' | 'communities' | 'shortest_path'
-  const [activeMenu, setActiveMenu] = useState('overview');
-
-  // Chế độ hiển thị Cột giữa: 'graph' (Đồ thị) | 'analytics' (Thống kê)
-  const [viewMode, setViewMode] = useState('analytics');
+  const [activeMenu, setActiveMenu] = useState('explore');
+  const [viewMode, setViewMode] = useState('graph');
 
   // Layout Responsive States
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
@@ -182,12 +355,15 @@ export default function AnalystPage() {
   // Graph Canvas Dark Mode Toggle
   const [isDarkCanvas, setIsDarkCanvas] = useState(false);
 
-  // Layout Engine
-  const [graphLayout, setGraphLayout] = useState('fcose'); // 'fcose' | 'circle' | 'concentric'
+  // Layout Engine: 'fcose' | 'concentric' | 'circle' | 'grid'
+  const [graphLayout, setGraphLayout] = useState('fcose');
+  const [isLayoutDropdownOpen, setIsLayoutDropdownOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Loading, Errors & Notifications
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
 
   // Data States
@@ -196,12 +372,26 @@ export default function AnalystPage() {
   const [kolsList, setKolsList] = useState([]);
   const [communitiesList, setCommunitiesList] = useState([]);
   const [trendingTopics, setTrendingTopics] = useState([]);
-  const [activeCommunityHighlight, setActiveCommunityHighlight] = useState(null);
 
-  // Selected Node Inspector
+  // Single Source of Truth for Graph Selections
+  const [selectedId, setSelectedId] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [communityHighlight, setCommunityHighlight] = useState(null);
+  const [pathResult, setPathResult] = useState(null);
 
-  // Filters State
+  // Counts of elements currently visible vs loaded
+  const [visibleCounts, setVisibleCounts] = useState({
+    visibleNodes: 0,
+    totalNodes: 0,
+    visibleEdges: 0,
+    totalEdges: 0,
+  });
+
+  // Tooltip floating on node hover
+  const [hoveredNode, setHoveredNode] = useState(null);
+  const [copiedId, setCopiedId] = useState(false);
+
+  // Filters State (Applied immediately without rebuild)
   const [nodeTypeFilters, setNodeTypeFilters] = useState({
     User: true,
     Post: true,
@@ -224,28 +414,42 @@ export default function AnalystPage() {
     to: '2026-10-27',
   });
 
-  // Global & Sidebar Searches
-  const [quickSearchQuery, setQuickSearchQuery] = useState('');
-  const [quickSuggestions, setQuickSuggestions] = useState([]);
-  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
-  const [sidebarSuggestions, setSidebarSuggestions] = useState([]);
+  // Search Inputs & Autocomplete States
+  const [headerSearchQuery, setHeaderSearchQuery] = useState('');
+  const [headerSuggestions, setHeaderSuggestions] = useState([]);
+  const [headerActiveIdx, setHeaderActiveIdx] = useState(-1);
+
+  const [centerSearchQuery, setCenterSearchQuery] = useState('');
+  const [centerSuggestions, setCenterSuggestions] = useState([]);
+  const [centerActiveIdx, setCenterActiveIdx] = useState(-1);
 
   // Shortest Path Tool State
   const [pathSource, setPathSource] = useState('alice');
   const [pathTarget, setPathTarget] = useState('david');
   const [pathMaxDepth, setPathMaxDepth] = useState(6);
-  const [pathResult, setPathResult] = useState(null);
   const [isPathSearching, setIsPathSearching] = useState(false);
 
-  // Chart Interactive Filters ('all' | 'likes' | 'comments' | 'shares')
+  // Chart Interactive Filters
   const [chartMetric, setChartMetric] = useState('all');
 
-  // Accordion widgets collapse state in Right Column
+  // Accordion widgets collapse states
+  const [sidebarAccordions, setSidebarAccordions] = useState({
+    nodeTypes: true,
+    relTypes: true,
+    time: true,
+  });
+
+  const toggleSidebarAccordion = (key) => {
+    setSidebarAccordions((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const [isLegendCollapsed, setIsLegendCollapsed] = useState(true);
+
   const [collapsedWidgets, setCollapsedWidgets] = useState({
+    entityDetail: false,
     relTypes: false,
     influencers: false,
     hotTopics: false,
-    entityDetail: false,
   });
 
   const toggleWidget = (key) => {
@@ -255,17 +459,38 @@ export default function AnalystPage() {
   // Refs
   const cyContainerRef = useRef(null);
   const cyRef = useRef(null);
+  const canvasWrapperRef = useRef(null);
+  const headerSearchInputRef = useRef(null);
+  const centerSearchInputRef = useRef(null);
+  const searchAbortControllerRef = useRef(null);
+  const isFirstLoadRef = useRef(true);
 
-  // Toast Notification Trigger
+  // Toast Notification
   const showToast = (message) => {
     setToastMsg(message);
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  // Phím tắt toàn cục (1-5 chuyển chức năng, ] hoặc Alt+R ẩn hiện cột phải, Esc bỏ chọn)
+  // 1. Phím tắt toàn cục: 1-5 chuyển chức năng, ] ẩn/hiện cột phải, Ctrl+K / Cmd+K focus tìm kiếm, Esc xóa chọn
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      // Ctrl+K hoặc Cmd+K
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        headerSearchInputRef.current?.focus();
+        headerSearchInputRef.current?.select();
+        return;
+      }
+
+      // Khi đang gõ trong input text
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+        if (e.key === 'Escape') {
+          setHeaderSuggestions([]);
+          setCenterSuggestions([]);
+          e.target.blur();
+        }
+        return;
+      }
 
       if (e.key === '1') {
         setActiveMenu('overview');
@@ -286,10 +511,8 @@ export default function AnalystPage() {
         e.preventDefault();
         toggleRightVisible();
       } else if (e.key === 'Escape') {
-        setSelectedNode(null);
-        if (cyRef.current) {
-          cyRef.current.elements().removeClass('dimmed highlighted path-highlighted');
-        }
+        // Esc xóa vùng chọn, làm mờ, community highlight và path-highlight (giữ ô A/B)
+        handleDeselectAll();
       }
     };
 
@@ -297,10 +520,10 @@ export default function AnalystPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Tải toàn bộ dữ liệu ban đầu
+  // 2. Tải toàn bộ dữ liệu ban đầu
   useEffect(() => {
     loadInitialData();
-  }, []);
+  }, [timePreset, dateRange]);
 
   const loadInitialData = async () => {
     setLoading(true);
@@ -309,10 +532,14 @@ export default function AnalystPage() {
       await analyticsApi.ensureAnalystAuth();
       const [sData, gData, kData, cData, tData] = await Promise.all([
         analyticsApi.getStats(),
-        analyticsApi.getSubgraph({ limit: 120 }),
+        analyticsApi.getSubgraph({
+          limit: 120,
+          from: timePreset === 'custom' ? dateRange.from : undefined,
+          to: timePreset === 'custom' ? dateRange.to : undefined,
+        }),
         analyticsApi.getInfluence({ metric: 'pagerank', limit: 10 }),
         analyticsApi.getCommunities(),
-        analyticsApi.getTrendingTopics({ days: 30, limit: 8 }),
+        analyticsApi.getTrendingTopics({ days: timePreset === '7d' ? 7 : timePreset === '90d' ? 90 : 30, limit: 8 }),
       ]);
 
       setStats(sData);
@@ -320,292 +547,557 @@ export default function AnalystPage() {
       setKolsList(kData);
       setCommunitiesList(cData.communities || []);
       setTrendingTopics(tData);
+      setIsOffline(!!gData.isOffline);
     } catch (err) {
       console.error('Error loading analytics:', err);
-      setError('Không thể kết nối đến backend. Đang sử dụng chế độ ngoại tuyến dự phòng.');
+      setError('Không thể kết nối đến backend FalkorDB. Đang chuyển sang dữ liệu ngoại tuyến dự phòng.');
+      setIsOffline(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // Khởi tạo và cập nhật Cytoscape Canvas khi ở tab đồ thị
+  // 3. Khởi tạo Cytoscape một lần duy nhất
   useEffect(() => {
-    if (activeMenu === 'overview' || !cyContainerRef.current) return;
-
-    // Filter nodes and edges based on state
-    const filteredNodes = graphData.nodes.filter(
-      (n) => nodeTypeFilters[n.data.type] !== false
-    );
-    const validNodeIds = new Set(filteredNodes.map((n) => n.data.id));
-    const filteredEdges = graphData.edges.filter(
-      (e) =>
-        validNodeIds.has(e.data.source) &&
-        validNodeIds.has(e.data.target) &&
-        relTypeFilters[e.data.type] !== false
-    );
-
-    // Xây dựng Cytoscape instance
-    if (cyRef.current) {
-      cyRef.current.destroy();
-    }
+    if (!cyContainerRef.current) return;
 
     const cy = cytoscape({
       container: cyContainerRef.current,
-      elements: [...filteredNodes, ...filteredEdges],
-      style: [
-        {
-          selector: 'node',
-          style: {
-            label: 'data(label)',
-            'font-family': 'Inter, system-ui, sans-serif',
-            'font-size': '11px',
-            'font-weight': 500,
-            color: isDarkCanvas ? '#E2E8F0' : '#1E293B',
-            'text-valign': 'bottom',
-            'text-margin-y': 5,
-            'text-background-opacity': isDarkCanvas ? 0.75 : 0.85,
-            'text-background-color': isDarkCanvas ? '#0B1220' : '#FFFFFF',
-            'text-background-padding': '3px',
-            'text-background-shape': 'roundrectangle',
-            width: (ele) => {
-              const type = ele.data('type');
-              if (type === 'Topic') return 40;
-              if (type === 'Post') return 34;
-              const pr = ele.data('pagerank') || 0.05;
-              return Math.max(26, Math.min(58, Math.round(Math.sqrt(pr) * 85)));
-            },
-            height: (ele) => {
-              const type = ele.data('type');
-              if (type === 'Topic') return 40;
-              if (type === 'Post') return 26;
-              const pr = ele.data('pagerank') || 0.05;
-              return Math.max(26, Math.min(58, Math.round(Math.sqrt(pr) * 85)));
-            },
-            shape: (ele) => {
-              const type = ele.data('type');
-              if (type === 'Topic') return 'diamond';
-              if (type === 'Post') return 'round-rectangle';
-              return 'ellipse';
-            },
-            'background-color': (ele) => {
-              if (activeMenu === 'communities') {
-                return ele.data('communityColor') || '#2563EB';
-              }
-              return NODE_TYPE_COLORS[ele.data('type')] || '#2563EB';
-            },
-            'border-width': 2,
-            'border-color': isDarkCanvas ? '#1E293B' : '#FFFFFF',
-            'transition-property': 'background-color, border-color, width, height, opacity',
-            'transition-duration': '0.2s',
-          },
-        },
-        {
-          selector: 'node[type = "Topic"]',
-          style: {
-            'border-width': 3,
-            'border-color': '#FFFFFF',
-            'font-weight': 600,
-            'font-size': '12px',
-          },
-        },
-        {
-          selector: 'node[?isKOL]',
-          style: {
-            'border-width': 3.5,
-            'border-color': '#F59E0B',
-            'font-weight': 600,
-            'font-size': '12px',
-            'shadow-blur': 14,
-            'shadow-color': '#F59E0B',
-            'shadow-opacity': 0.6,
-          },
-        },
-        {
-          selector: 'edge',
-          style: {
-            width: 1.5,
-            'line-color': (ele) => EDGE_COLORS[ele.data('type')] || '#94A3B8',
-            'target-arrow-color': (ele) => EDGE_COLORS[ele.data('type')] || '#94A3B8',
-            'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
-            'arrow-scale': 0.85,
-            opacity: isDarkCanvas ? 0.5 : 0.65,
-            'line-style': (ele) => (ele.data('type') === 'ABOUT' || ele.data('type') === 'INTERESTED_IN' ? 'dashed' : 'solid'),
-          },
-        },
-        {
-          selector: 'edge[type = "ABOUT"]',
-          style: {
-            width: 2,
-            'line-style': 'dashed',
-            'line-color': '#A855F7',
-            'target-arrow-color': '#A855F7',
-          },
-        },
-        {
-          selector: 'node:active, node:hover',
-          style: {
-            'border-width': 3.5,
-            'border-color': '#3B82F6',
-            'shadow-blur': 14,
-            'shadow-color': '#2563EB',
-            'shadow-opacity': 0.6,
-          },
-        },
-        {
-          selector: 'node:selected',
-          style: {
-            'border-width': 4,
-            'border-color': '#2563EB',
-            'shadow-blur': 18,
-            'shadow-color': '#2563EB',
-            'shadow-opacity': 0.8,
-          },
-        },
-        {
-          selector: '.dimmed',
-          style: {
-            opacity: 0.1,
-          },
-        },
-        {
-          selector: '.highlighted',
-          style: {
-            opacity: 1,
-            'border-width': 3.5,
-            'border-color': '#FFFFFF',
-            'shadow-blur': 16,
-            'shadow-opacity': 0.85,
-          },
-        },
-        {
-          selector: '.path-highlighted',
-          style: {
-            opacity: 1,
-            'border-color': '#EAB308',
-            'border-width': 4.5,
-            'line-color': '#EAB308',
-            'target-arrow-color': '#EAB308',
-            width: 4,
-            'shadow-blur': 20,
-            'shadow-color': '#EAB308',
-            'shadow-opacity': 0.95,
-          },
-        },
-      ],
-      layout: {
-        name: graphLayout === 'fcose' ? 'cose' : graphLayout,
-        animate: true,
-        animationDuration: 600,
-        randomize: true,
-        fit: true,
-        padding: 60,
-        componentSpacing: 80,
-        nodeRepulsion: 12000,
-        idealEdgeLength: 85,
-        edgeElasticity: 100,
-        gravity: 0.2,
-        numIter: 1000,
-      },
+      elements: [],
+      style: buildCytoscapeStyle(isDarkCanvas, activeMenu),
+      minZoom: 0.15,
+      maxZoom: 4,
+      boxSelectionEnabled: false,
+      autounselectify: false,
     });
 
+    // Node click
     cy.on('tap', 'node', (evt) => {
       const node = evt.target;
-      setSelectedNode(node.data());
-      const neighborhood = node.neighborhood().add(node);
-      cy.elements().addClass('dimmed');
-      neighborhood.removeClass('dimmed');
+      handleSelectNode(node.data('id'), false);
     });
 
+    // Double-click on node -> Mở rộng 1-hop
+    cy.on('dbltap', 'node', (evt) => {
+      const node = evt.target;
+      const d = node.data();
+      handleExpandNeighborhood(d.username || d.id);
+    });
+
+    // Click canvas background -> Bỏ chọn
     cy.on('tap', (evt) => {
       if (evt.target === cy) {
-        setSelectedNode(null);
-        cy.elements().removeClass('dimmed highlighted path-highlighted');
+        handleDeselectAll();
+      }
+    });
+
+    // Hover node -> Làm nổi cạnh liên quan + hiện Tooltip
+    cy.on('mouseover', 'node', (evt) => {
+      const node = evt.target;
+      if (!node.hasClass('hidden')) {
+        const renderedPos = node.renderedPosition();
+        setHoveredNode({
+          data: node.data(),
+          x: renderedPos.x,
+          y: renderedPos.y,
+        });
+        node.connectedEdges().addClass('hovered');
+      }
+    });
+
+    cy.on('mouseout', 'node', (evt) => {
+      setHoveredNode(null);
+      evt.target.connectedEdges().removeClass('hovered');
+    });
+
+    // Zoom listener: nếu zoom > 1.2, hiện nhãn đầy đủ cho tất cả node
+    cy.on('zoom', () => {
+      const currentZoom = cy.zoom();
+      if (currentZoom > 1.2) {
+        cy.nodes().addClass('zoomed-in');
+      } else {
+        cy.nodes().removeClass('zoomed-in');
       }
     });
 
     cyRef.current = cy;
 
     return () => {
-      cy.destroy();
+      if (cyRef.current) {
+        cyRef.current.destroy();
+        cyRef.current = null;
+      }
     };
-  }, [graphData, nodeTypeFilters, relTypeFilters, isDarkCanvas, graphLayout, activeMenu]);
+  }, []);
 
-  // Highlight cộng đồng cụ thể khi click từ danh sách
-  const handleHighlightCommunity = (cid) => {
-    if (!cyRef.current) return;
-    if (activeCommunityHighlight === cid) {
-      setActiveCommunityHighlight(null);
-      cyRef.current.elements().removeClass('dimmed highlighted');
+  // 4. ResizeObserver trên container đồ thị
+  useEffect(() => {
+    if (!cyContainerRef.current) return;
+    const ro = new ResizeObserver(() => {
+      if (cyRef.current) {
+        cyRef.current.resize();
+      }
+    });
+    ro.observe(cyContainerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  // Resize khi bật/tắt cột hoặc thu gọn menu
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (cyRef.current) {
+        cyRef.current.resize();
+      }
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [isLeftCollapsed, isRightVisible]);
+
+  // 5. Cập nhật Style khi đổi nền tối/sáng hoặc chế độ (Explore, PageRank, Communities)
+  useEffect(() => {
+    if (cyRef.current) {
+      cyRef.current.style(buildCytoscapeStyle(isDarkCanvas, activeMenu));
+      reapplySelectionStates();
+    }
+  }, [isDarkCanvas, activeMenu]);
+
+  // 6. Cập nhật dữ liệu tăng dần qua cy.batch (chỉ thêm mới, không phá vỡ đồ thị)
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !graphData.nodes || graphData.nodes.length === 0) return;
+
+    const existingNodeIds = new Set(cy.nodes().map((n) => n.id()));
+    const existingEdgeIds = new Set(cy.edges().map((e) => e.id()));
+
+    const newNodes = graphData.nodes.filter((n) => !existingNodeIds.has(n.data.id));
+    const newEdges = graphData.edges.filter((e) => !existingEdgeIds.has(e.data.id));
+
+    if (newNodes.length === 0 && newEdges.length === 0 && !isFirstLoadRef.current) {
+      applyFiltersToCanvas();
       return;
     }
 
-    setActiveCommunityHighlight(cid);
-    cyRef.current.elements().addClass('dimmed');
+    cy.batch(() => {
+      if (newNodes.length > 0) cy.add(newNodes);
+      if (newEdges.length > 0) cy.add(newEdges);
+    });
 
-    const communityNodes = cyRef.current.nodes().filter((n) => String(n.data('community')) === String(cid));
-    const communityEdges = communityNodes.connectedEdges();
+    // Đánh dấu KOLs
+    const kolSet = new Set(kolsList.slice(0, 10).map((k) => k.id || `u_${k.username}` || k.username));
+    cy.nodes().forEach((n) => {
+      const d = n.data();
+      if (d.isKOL || kolSet.has(d.id) || kolSet.has(d.username)) {
+        n.addClass('kol');
+      }
+    });
 
-    communityNodes.removeClass('dimmed').addClass('highlighted');
-    communityEdges.removeClass('dimmed');
+    // Áp dụng bộ lọc hiện tại
+    applyFiltersToCanvas();
+
+    // Chạy layout
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      runCurrentLayout({ fit: true, randomize: true });
+    } else if (newNodes.length > 0) {
+      // Khóa node cũ, chạy layout cho node mới mà không thay đổi camera
+      const oldNodes = cy.nodes().filter((n) => existingNodeIds.has(n.id()));
+      oldNodes.lock();
+      runCurrentLayout({ fit: false, randomize: false }, () => {
+        oldNodes.unlock();
+      });
+    }
+
+    reapplySelectionStates();
+  }, [graphData, kolsList]);
+
+  // 7. Áp dụng bộ lọc (ẩn/hiện tức thì qua class .hidden, không rebuild)
+  const applyFiltersToCanvas = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    cy.batch(() => {
+      // 1. Lọc Node
+      cy.nodes().forEach((n) => {
+        const type = n.data('type');
+        const isVisible = nodeTypeFilters[type] !== false;
+        if (isVisible) {
+          n.removeClass('hidden');
+        } else {
+          n.addClass('hidden');
+        }
+      });
+
+      // 2. Lọc Edge: ẩn nếu loại cạnh bị tắt hoặc một trong hai đầu mút bị ẩn
+      cy.edges().forEach((e) => {
+        const type = e.data('type');
+        const isTypeVisible = relTypeFilters[type] !== false;
+        const sHidden = e.source().hasClass('hidden');
+        const tHidden = e.target().hasClass('hidden');
+
+        if (isTypeVisible && !sHidden && !tHidden) {
+          e.removeClass('hidden');
+        } else {
+          e.addClass('hidden');
+        }
+      });
+    });
+
+    // Cập nhật số đếm phần tử đang hiển thị
+    const vNodes = cy.nodes().not('.hidden').length;
+    const tNodes = cy.nodes().length;
+    const vEdges = cy.edges().not('.hidden').length;
+    const tEdges = cy.edges().length;
+
+    setVisibleCounts({
+      visibleNodes: vNodes,
+      totalNodes: tNodes,
+      visibleEdges: vEdges,
+      totalEdges: tEdges,
+    });
+
+    reapplySelectionStates();
+  }, [nodeTypeFilters, relTypeFilters]);
+
+  // Kích hoạt lọc ngay khi bộ lọc thay đổi
+  useEffect(() => {
+    applyFiltersToCanvas();
+  }, [nodeTypeFilters, relTypeFilters, applyFiltersToCanvas]);
+
+  // 8. Chạy Layout Cytoscape
+  const runCurrentLayout = useCallback((options = {}, onFinish) => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    let layoutConfig = {
+      name: 'fcose',
+      quality: 'default',
+      packComponents: true,
+      nodeRepulsion: 6500,
+      idealEdgeLength: 90,
+      nodeSeparation: 80,
+      animate: 'end',
+      animationDuration: 500,
+      randomize: options.randomize ?? false,
+      fit: options.fit ?? false,
+      padding: 50,
+      stop: () => {
+        if (onFinish) onFinish();
+      },
+    };
+
+    if (graphLayout === 'concentric') {
+      layoutConfig = {
+        name: 'concentric',
+        concentric: (node) => (node.data('pagerank') || 0.05) * 100 + node.degree(),
+        levelWidth: () => 1,
+        animate: true,
+        animationDuration: 500,
+        fit: options.fit ?? true,
+        padding: 50,
+        stop: () => {
+          if (onFinish) onFinish();
+        },
+      };
+    } else if (graphLayout === 'circle') {
+      layoutConfig = {
+        name: 'circle',
+        animate: true,
+        animationDuration: 500,
+        fit: options.fit ?? true,
+        padding: 50,
+        stop: () => {
+          if (onFinish) onFinish();
+        },
+      };
+    } else if (graphLayout === 'grid') {
+      layoutConfig = {
+        name: 'grid',
+        animate: true,
+        animationDuration: 500,
+        fit: options.fit ?? true,
+        padding: 50,
+        stop: () => {
+          if (onFinish) onFinish();
+        },
+      };
+    }
+
+    try {
+      const l = cy.layout(layoutConfig);
+      l.run();
+    } catch (err) {
+      console.warn('Layout execution error:', err.message);
+      if (onFinish) onFinish();
+    }
+  }, [graphLayout]);
+
+  // Đổi layout khi người dùng chọn trong dropdown
+  const handleChangeLayout = (name) => {
+    setGraphLayout(name);
+    setIsLayoutDropdownOpen(false);
+    setTimeout(() => {
+      runCurrentLayout({ fit: true, randomize: false });
+      showToast(`Đã áp dụng bố cục: ${name === 'fcose' ? 'fCoSE' : name}`);
+    }, 50);
   };
 
-  // Focus vào một node cụ thể trên canvas
-  const handleFocusNode = (usernameOrId) => {
-    if (activeMenu === 'overview') {
-      setActiveMenu('explore');
-      setViewMode('graph');
+  // 9. Nguồn sự thật cho vùng chọn: Áp lại các class trạng thái
+  const reapplySelectionStates = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    cy.elements().removeClass('dimmed highlighted path-highlighted neighbor');
+
+    if (pathResult && pathResult.steps && pathResult.steps.length > 0) {
+      cy.elements().addClass('dimmed');
+      const stepSet = new Set(pathResult.steps);
+      const pNodes = cy.nodes().filter((n) => stepSet.has(n.data('username')) || stepSet.has(n.data('id')));
+      pNodes.removeClass('dimmed').addClass('path-highlighted');
+
+      for (let i = 0; i < pathResult.steps.length - 1; i++) {
+        const uA = pathResult.steps[i];
+        const uB = pathResult.steps[i + 1];
+        const edge = cy.edges().filter((e) => {
+          const s = e.source().data('username') || e.source().id();
+          const t = e.target().data('username') || e.target().id();
+          return (s === uA && t === uB) || (s === uB && t === uA);
+        });
+        edge.removeClass('dimmed').addClass('path-highlighted');
+      }
+    } else if (communityHighlight) {
+      cy.elements().addClass('dimmed');
+      const cNodes = cy.nodes().filter((n) => String(n.data('community')) === String(communityHighlight));
+      const cEdges = cNodes.connectedEdges();
+      cNodes.removeClass('dimmed').addClass('highlighted');
+      cEdges.removeClass('dimmed');
+    } else if (selectedId) {
+      const node = cy.getElementById(selectedId);
+      if (node && node.length > 0) {
+        cy.elements().addClass('dimmed');
+        node.removeClass('dimmed');
+        node.select();
+
+        const neighborhood = node.neighborhood();
+        neighborhood.removeClass('dimmed');
+        neighborhood.nodes().addClass('neighbor');
+      }
     }
-    setTimeout(() => {
-      if (!cyRef.current) return;
-      const clean = usernameOrId.replace(/^[@#]/, '');
-      const target = cyRef.current.nodes().filter((n) => {
+  }, [pathResult, communityHighlight, selectedId]);
+
+  // Hàm chọn node dùng chung cho toàn bộ giao diện
+  const handleSelectNode = useCallback((nodeId, shouldCenter = true) => {
+    const cy = cyRef.current;
+    if (!cy || !nodeId) return;
+
+    const node = cy.getElementById(nodeId);
+    if (!node || node.length === 0) return;
+
+    setSelectedId(nodeId);
+    setSelectedNode(node.data());
+    setCommunityHighlight(null);
+    setPathResult(null);
+
+    // Tự mở widget Chi tiết thực thể ở đầu cột phải
+    setCollapsedWidgets((prev) => ({ ...prev, entityDetail: false }));
+    setIsRightVisible(true);
+
+    if (shouldCenter) {
+      cy.animate({
+        center: { eles: node },
+        zoom: 1.6,
+        duration: 400,
+      });
+    }
+
+    reapplySelectionStates();
+  }, [reapplySelectionStates]);
+
+  // Bỏ chọn tất cả
+  const handleDeselectAll = useCallback(() => {
+    setSelectedId(null);
+    setSelectedNode(null);
+    setCommunityHighlight(null);
+    setPathResult(null);
+    if (cyRef.current) {
+      cyRef.current.elements().removeClass('dimmed highlighted path-highlighted neighbor');
+      cyRef.current.nodes().unselect();
+    }
+  }, []);
+
+  // Định vị hoặc tải thêm node từ tìm kiếm
+  const handleFocusOrLoadNode = async (identifier) => {
+    if (!identifier) return;
+    const cy = cyRef.current;
+    const clean = identifier.replace(/^[@#]/, '').trim();
+
+    // 1. Tìm trong canvas hiện có
+    if (cy) {
+      const target = cy.nodes().filter((n) => {
         const d = n.data();
-        return d.username === clean || d.id === clean || d.name === clean || d.id === `u_${clean}`;
+        return d.username === clean || d.id === clean || d.name === clean || d.id === `u_${clean}` || d.id === `t_${clean}`;
       });
 
       if (target.length > 0) {
-        cyRef.current.animate({
-          center: { eles: target },
-          zoom: 1.8,
-          duration: 400,
-        });
-        target.select();
-        setSelectedNode(target.data());
-        showToast(`Đã định vị thực thể: ${target.data('label')}`);
-      } else {
-        showToast('Không tìm thấy thực thể trong đồ thị hiện tại');
+        handleSelectNode(target.data('id'), true);
+        showToast(`Đã định vị: ${target.data('label')}`);
+        return;
       }
-    }, 100);
-  };
+    }
 
-  // Mở rộng láng giềng (+1 Hop)
-  const handleExpandNeighborhood = async (nodeId) => {
-    showToast('Đang mở rộng các đỉnh liên kết láng giềng...');
+    // 2. Không có trên canvas -> Gọi API getSubgraph({ center })
+    showToast(`Đang nạp đỉnh: ${clean}...`);
     try {
-      const more = await analyticsApi.getSubgraph({ center: nodeId, limit: 50 });
-      if (more && more.nodes?.length > 0) {
+      const res = await analyticsApi.getSubgraph({ center: clean, hops: 1 });
+      if (res && res.nodes && res.nodes.length > 0) {
         setGraphData((prev) => {
           const existingIds = new Set(prev.nodes.map((n) => n.data.id));
-          const newNodes = more.nodes.filter((n) => !existingIds.has(n.data.id));
+          const newNodes = res.nodes.filter((n) => !existingIds.has(n.data.id));
           const existingEdgeIds = new Set(prev.edges.map((e) => e.data.id));
-          const newEdges = more.edges.filter((e) => !existingEdgeIds.has(e.data.id));
+          const newEdges = res.edges.filter((e) => !existingEdgeIds.has(e.data.id));
+
           return {
             nodes: [...prev.nodes, ...newNodes],
             edges: [...prev.edges, ...newEdges],
           };
         });
-        showToast('Đã nạp thêm các quan hệ láng giềng thành công');
+
+        // Đợi nạp xong rồi focus
+        setTimeout(() => {
+          const cyNew = cyRef.current;
+          if (cyNew) {
+            const added = cyNew.nodes().filter((n) => {
+              const d = n.data();
+              return d.username === clean || d.id === clean || d.name === clean || d.id === `u_${clean}` || d.id === `t_${clean}`;
+            });
+            if (added.length > 0) {
+              handleSelectNode(added.data('id'), true);
+              showToast(`Đã nạp và định vị: ${added.data('label')}`);
+            }
+          }
+        }, 300);
+      } else {
+        showToast(`Không tìm thấy thực thể "${identifier}" trong hệ thống`);
       }
     } catch {
-      showToast('Không thể mở rộng láng giềng');
+      showToast(`Lỗi khi tìm nạp thực thể "${identifier}"`);
     }
+  };
+
+  // Mở rộng láng giềng (+1 Hop)
+  const handleExpandNeighborhood = async (centerId) => {
+    if (!centerId) return;
+    const cleanId = String(centerId).replace(/^[@#]/, '');
+    showToast('Đang mở rộng lân cận (+1 Hop)...');
+
+    try {
+      const res = await analyticsApi.getSubgraph({ center: cleanId, hops: 1, limit: 40 });
+      if (res && res.nodes && res.nodes.length > 0) {
+        setGraphData((prev) => {
+          const existingIds = new Set(prev.nodes.map((n) => n.data.id));
+          const newNodes = res.nodes.filter((n) => !existingIds.has(n.data.id));
+          const existingEdgeIds = new Set(prev.edges.map((e) => e.data.id));
+          const newEdges = res.edges.filter((e) => !existingEdgeIds.has(e.data.id));
+
+          return {
+            nodes: [...prev.nodes, ...newNodes],
+            edges: [...prev.edges, ...newEdges],
+          };
+        });
+        showToast(`Đã nạp thêm ${res.nodes.length} đỉnh lân cận`);
+      } else {
+        showToast('Đỉnh này không có liên kết mới nào để mở rộng');
+      }
+    } catch {
+      showToast('Lỗi khi mở rộng lân cận');
+    }
+  };
+
+  // Autocomplete debounce 250ms với AbortController
+  const performAutocomplete = (query, setSuggestions, setActiveIdx) => {
+    if (!query.trim()) {
+      setSuggestions([]);
+      setActiveIdx(-1);
+      return;
+    }
+
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortControllerRef.current = controller;
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await analyticsApi.searchGlobal({ q: query.trim(), limit: 6 });
+        if (controller.signal.aborted) return;
+
+        const results = [
+          ...(res.users || []).map((u) => ({
+            id: u.id,
+            username: u.username,
+            label: `@${u.username}`,
+            type: 'User',
+            fullName: u.fullName,
+          })),
+          ...(res.topics || []).map((t) => ({
+            id: t.id,
+            name: t.name,
+            label: `#${t.name}`,
+            type: 'Topic',
+            fullName: t.name,
+          })),
+        ];
+
+        setSuggestions(results);
+        setActiveIdx(-1);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSuggestions([]);
+        }
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  };
+
+  // Keyboard navigation cho autocomplete
+  const handleAutocompleteKeyDown = (e, suggestions, activeIdx, setActiveIdx, onSelect, onClose) => {
+    if (suggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIdx((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIdx((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && activeIdx < suggestions.length) {
+        onSelect(suggestions[activeIdx]);
+      } else if (suggestions.length > 0) {
+        onSelect(suggestions[0]);
+      }
+    } else if (e.key === 'Escape') {
+      onClose();
+    }
+  };
+
+  // Highlight cụm cộng đồng
+  const handleToggleCommunityHighlight = (cid) => {
+    if (String(communityHighlight) === String(cid)) {
+      setCommunityHighlight(null);
+    } else {
+      setCommunityHighlight(String(cid));
+      setSelectedId(null);
+      setSelectedNode(null);
+      setPathResult(null);
+    }
+    reapplySelectionStates();
   };
 
   // Phân tích đường đi ngắn nhất
   const handleAnalyzePath = async () => {
     if (!pathSource.trim() || !pathTarget.trim()) {
-      showToast('Vui lòng nhập đầy đủ người dùng A và B');
+      showToast('Vui lòng nhập người dùng A và B');
       return;
     }
     setIsPathSearching(true);
@@ -616,177 +1108,52 @@ export default function AnalystPage() {
         maxDepth: pathMaxDepth,
       });
       setPathResult(res);
-
-      if (cyRef.current && res && res.steps && res.steps.length > 0) {
-        cyRef.current.elements().addClass('dimmed').removeClass('path-highlighted');
-
-        const stepUsernames = new Set(res.steps);
-        const pathNodes = cyRef.current.nodes().filter((n) => stepUsernames.has(n.data('username')));
-        pathNodes.removeClass('dimmed').addClass('path-highlighted');
-
-        for (let i = 0; i < res.steps.length - 1; i++) {
-          const uA = res.steps[i];
-          const uB = res.steps[i + 1];
-          const edge = cyRef.current.edges().filter((e) => {
-            const sUser = e.source().data('username');
-            const tUser = e.target().data('username');
-            return (sUser === uA && tUser === uB) || (sUser === uB && tUser === uA);
-          });
-          edge.removeClass('dimmed').addClass('path-highlighted');
-        }
-
-        cyRef.current.animate({
-          fit: { eles: pathNodes, padding: 60 },
-          duration: 400,
-        });
-      }
+      setSelectedId(null);
+      setSelectedNode(null);
+      setCommunityHighlight(null);
+      reapplySelectionStates();
     } catch {
-      showToast('Lỗi khi phân tích đường đi ngắn nhất');
+      showToast('Không tìm thấy đường đi giữa hai đỉnh');
     } finally {
       setIsPathSearching(false);
     }
   };
 
-  // Xóa kết quả tìm đường đi
-  const handleClearPath = () => {
-    setPathResult(null);
-    if (cyRef.current) {
-      cyRef.current.elements().removeClass('dimmed path-highlighted');
-      cyRef.current.fit(40);
+  // Toàn màn hình
+  const handleToggleFullscreen = () => {
+    if (!canvasWrapperRef.current) return;
+    if (!document.fullscreenElement) {
+      canvasWrapperRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
     }
   };
 
-  // Đảo ngược vị trí người dùng A <-> B
-  const handleSwapPathUsers = () => {
-    const temp = pathSource;
-    setPathSource(pathTarget);
-    setPathTarget(temp);
-  };
-
-  // Autocomplete tìm kiếm toàn cục
-  const handleQuickSearchChange = async (val) => {
-    setQuickSearchQuery(val);
-    if (!val.trim()) {
-      setQuickSuggestions([]);
-      return;
-    }
-    try {
-      const res = await analyticsApi.searchGlobal({ q: val.trim() });
-      const suggestions = [
-        ...(res.users || []).map((u) => ({ ...u, type: 'User', label: `@${u.username}` })),
-        ...(res.topics || []).map((t) => ({ ...t, type: 'Topic', label: `#${t.name}` })),
-      ];
-      setQuickSuggestions(suggestions.slice(0, 5));
-    } catch {
-      setQuickSuggestions([]);
-    }
-  };
-
-  // Autocomplete tìm nhanh trong Sidebar
-  const handleSidebarSearchChange = async (val) => {
-    setSidebarSearchQuery(val);
-    if (!val.trim()) {
-      setSidebarSuggestions([]);
-      return;
-    }
-    try {
-      const res = await analyticsApi.searchGlobal({ q: val.trim() });
-      const suggestions = [
-        ...(res.users || []).map((u) => ({ ...u, type: 'User', label: `@${u.username}` })),
-        ...(res.topics || []).map((t) => ({ ...t, type: 'Topic', label: `#${t.name}` })),
-      ];
-      setSidebarSuggestions(suggestions.slice(0, 5));
-    } catch {
-      setSidebarSuggestions([]);
-    }
-  };
-
-  // Xuất ảnh đồ thị PNG
-  const handleExportPNG = () => {
-    if (!cyRef.current) return;
-    const png64 = cyRef.current.png({ full: true, scale: 2, bg: isDarkCanvas ? '#0B1220' : '#FFFFFF' });
-    const link = document.createElement('a');
-    link.href = png64;
-    link.download = `falkordb-graph-${activeMenu}-${Date.now()}.png`;
-    link.click();
-    showToast('Đã xuất ảnh PNG chất lượng cao thành công');
-  };
-
-  // Xuất dữ liệu đồ thị JSON
-  const handleExportJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(graphData, null, 2));
-    const link = document.createElement('a');
-    link.href = dataStr;
-    link.download = `falkordb-graph-${activeMenu}-${Date.now()}.json`;
-    link.click();
-    showToast('Đã xuất tệp cấu trúc JSON đồ thị');
-  };
-
-  // Đếm số lượng bộ lọc đang kích hoạt
-  const activeFiltersCount = useMemo(() => {
-    let count = 0;
-    if (!nodeTypeFilters.User || !nodeTypeFilters.Post || !nodeTypeFilters.Topic) count++;
-    const activeRelKeys = Object.values(relTypeFilters).filter(Boolean).length;
-    if (activeRelKeys < ALL_REL_TYPES.length) count++;
-    if (timePreset !== '30d') count++;
-    return count;
-  }, [nodeTypeFilters, relTypeFilters, timePreset]);
-
-  // Reset bộ lọc
-  const handleResetFilters = () => {
-    setNodeTypeFilters({ User: true, Post: true, Topic: true });
-    setRelTypeFilters({
-      FOLLOWS: true,
-      LIKED: true,
-      ABOUT: true,
-      POSTED: true,
-      INTERESTED_IN: true,
-      COMMENTED: true,
-      SHARED: true,
+  // Zoom quanh tâm khung nhìn
+  const handleZoom = (factor) => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const currentZoom = cy.zoom();
+    const newZoom = Math.max(0.15, Math.min(4, currentZoom * factor));
+    cy.animate({
+      zoom: {
+        level: newZoom,
+        position: { x: cy.width() / 2, y: cy.height() / 2 },
+      },
+      duration: 250,
     });
-    setTimePreset('30d');
-    showToast('Đã đặt lại toàn bộ bộ lọc về mặc định');
   };
 
-  // Tính toán số liệu Tổng quan hệ thống (Logic & Số liệu chuẩn hóa)
-  const totalNodes = stats?.totalNodes || 40050;
-  const totalEdges = stats?.totalEdges || 386500;
+  // Sao chép ID vào clipboard
+  const handleCopyId = (id) => {
+    if (!id) return;
+    navigator.clipboard.writeText(id);
+    setCopiedId(true);
+    showToast(`Đã sao chép ID: ${id}`);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
 
-  // Bậc trung bình: có hướng E / V; nếu coi vô hướng 2E / V
-  const avgDegreeDirected = totalNodes > 0 ? totalEdges / totalNodes : 0;
-  const avgDegreeUndirected = totalNodes > 0 ? (2 * totalEdges) / totalNodes : 0;
-
-  // Mật độ mạng (Network Density): density = E / (V * (V - 1)) * 100%
-  const networkDensity =
-    totalNodes > 1 ? (totalEdges / (totalNodes * (totalNodes - 1))) * 100 : 0;
-
-  // Dữ liệu biểu đồ Chủ đề chuẩn hóa
-  const chartData = useMemo(() => {
-    const source =
-      trendingTopics.length > 0
-        ? trendingTopics
-        : [
-            { name: 'ai', likes: 21500, comments: 8400, shares: 3200 },
-            { name: 'nosql', likes: 18200, comments: 6100, shares: 2500 },
-            { name: 'react', likes: 16400, comments: 5300, shares: 2100 },
-            { name: 'falkordb', likes: 15100, comments: 4900, shares: 1900 },
-            { name: 'graphdb', likes: 13800, comments: 4200, shares: 1700 },
-            { name: 'nodejs', likes: 12500, comments: 3800, shares: 1500 },
-            { name: 'javascript', likes: 11200, comments: 3400, shares: 1300 },
-            { name: 'python', likes: 9800, comments: 2900, shares: 1100 },
-          ];
-
-    return source.map((t) => ({
-      ...t,
-      displayName: normalizeTopicName(t.name),
-      likes: t.likes || 0,
-      comments: t.comments || 0,
-      shares: t.shares || Math.round((t.likes || 1000) * 0.15),
-      interactions: (t.likes || 0) + (t.comments || 0) * 2 + ((t.shares || 0) * 3),
-    }));
-  }, [trendingTopics]);
-
-  // Chuẩn hóa phân phối bậc đồ thị (Power Law / Scale-Free)
+  // Dữ liệu biểu đồ phân phối bậc chuẩn hóa (Power Law)
   const processedDegreeBuckets = useMemo(() => {
     const raw = stats?.degreeBuckets;
     if (!raw || !Array.isArray(raw) || raw.length === 0) {
@@ -800,7 +1167,6 @@ export default function AnalystPage() {
       ];
     }
 
-    // Nếu dữ liệu đã có sẵn cấu trúc { bucket, count }
     if (raw[0].bucket !== undefined) {
       return raw.map((b) => ({
         bucket: b.bucket,
@@ -808,7 +1174,6 @@ export default function AnalystPage() {
       }));
     }
 
-    // Nhóm 100+ bậc chi tiết { degree, users } từ FalkorDB thành các khoảng bậc thống kê
     const standardRanges = [
       { bucket: '0', min: 0, max: 0, count: 0 },
       { bucket: '1 - 5', min: 1, max: 5, count: 0 },
@@ -828,11 +1193,39 @@ export default function AnalystPage() {
       }
     }
 
-    const filtered = standardRanges.filter((r) => r.count > 0 || (r.min >= 1 && r.max <= 60));
-    return filtered.length > 0 ? filtered : standardRanges;
+    return standardRanges.filter((r) => r.count > 0 || (r.min >= 1 && r.max <= 60));
   }, [stats?.degreeBuckets]);
 
-  // Phân tích ma trận quan hệ động
+  // Số liệu tổng quan
+  const totalNodes = stats?.totalNodes || 40050;
+  const totalEdges = stats?.totalEdges || 386500;
+  const avgDegreeDirected = totalNodes > 0 ? totalEdges / totalNodes : 0;
+  const avgDegreeUndirected = totalNodes > 0 ? (2 * totalEdges) / totalNodes : 0;
+  const networkDensity = totalNodes > 1 ? (totalEdges / (totalNodes * (totalNodes - 1))) * 100 : 0;
+
+  // Dữ liệu chủ đề
+  const chartData = useMemo(() => {
+    const source = trendingTopics.length > 0 ? trendingTopics : [
+      { name: 'ai', likes: 21500, comments: 8400, shares: 3200 },
+      { name: 'nosql', likes: 18200, comments: 6100, shares: 2500 },
+      { name: 'react', likes: 16400, comments: 5300, shares: 2100 },
+      { name: 'falkordb', likes: 15100, comments: 4900, shares: 1900 },
+      { name: 'graphdb', likes: 13800, comments: 4200, shares: 1700 },
+      { name: 'nodejs', likes: 12500, comments: 3800, shares: 1500 },
+      { name: 'javascript', likes: 11200, comments: 3400, shares: 1300 },
+      { name: 'python', likes: 9800, comments: 2900, shares: 1100 },
+    ];
+
+    return source.map((t) => ({
+      ...t,
+      displayName: normalizeTopicName(t.name),
+      likes: t.likes || 0,
+      comments: t.comments || 0,
+      shares: t.shares || Math.round((t.likes || 1000) * 0.15),
+      interactions: (t.likes || 0) + (t.comments || 0) * 2 + ((t.shares || 0) * 3),
+    }));
+  }, [trendingTopics]);
+
   const maxRelCount = useMemo(() => Math.max(...ALL_REL_TYPES.map((r) => r.count)), []);
 
   const macroAnalysisText = useMemo(() => {
@@ -848,10 +1241,9 @@ export default function AnalystPage() {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#F8FAFC] text-[#0F172A] font-sans">
       {/* ======================================================== */}
-      {/* 1. HEADER CHÍNH (HEIGHT: 56PX)                           */}
+      {/* 1. HEADER CHÍNH                                          */}
       {/* ======================================================== */}
       <header className="h-14 bg-white border-b border-[#E2E8F0] px-4 sm:px-6 flex items-center justify-between gap-4 shrink-0 z-30">
-        {/* Logo & Workspace Tag */}
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -875,13 +1267,31 @@ export default function AnalystPage() {
           </Link>
         </div>
 
-        {/* Global Search Bar (Ctrl+K) */}
+        {/* Global Search Bar với Autocomplete chuẩn debounce 250ms & phím tắt Ctrl+K */}
         <div className="relative max-w-md w-full hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#64748B]" />
           <input
+            ref={headerSearchInputRef}
             type="text"
-            value={quickSearchQuery}
-            onChange={(e) => handleQuickSearchChange(e.target.value)}
+            value={headerSearchQuery}
+            onChange={(e) => {
+              setHeaderSearchQuery(e.target.value);
+              performAutocomplete(e.target.value, setHeaderSuggestions, setHeaderActiveIdx);
+            }}
+            onKeyDown={(e) =>
+              handleAutocompleteKeyDown(
+                e,
+                headerSuggestions,
+                headerActiveIdx,
+                setHeaderActiveIdx,
+                (item) => {
+                  handleFocusOrLoadNode(item.label);
+                  setHeaderSuggestions([]);
+                  setHeaderSearchQuery('');
+                },
+                () => setHeaderSuggestions([])
+              )
+            }
             placeholder="Tìm đỉnh đồ thị, KOLs, cộng đồng… (gõ @user hoặc #topic)"
             className="w-full h-9 pl-9 pr-14 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB] transition-all"
           />
@@ -889,19 +1299,21 @@ export default function AnalystPage() {
             Ctrl K
           </kbd>
 
-          {quickSuggestions.length > 0 && (
+          {headerSuggestions.length > 0 && (
             <div className="absolute top-11 left-0 right-0 bg-white border border-[#E2E8F0] rounded-[12px] shadow-lg p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
-              <div className="text-xs font-semibold text-[#64748B] px-2.5 py-1 uppercase">Gợi ý đồ thị</div>
-              {quickSuggestions.map((item) => (
+              <div className="text-xs font-semibold text-[#64748B] px-2.5 py-1 uppercase">Gợi ý tìm kiếm</div>
+              {headerSuggestions.map((item, idx) => (
                 <button
-                  key={item.id}
+                  key={`${item.type}-${item.id}`}
                   type="button"
                   onClick={() => {
-                    handleFocusNode(item.label);
-                    setQuickSuggestions([]);
-                    setQuickSearchQuery('');
+                    handleFocusOrLoadNode(item.label);
+                    setHeaderSuggestions([]);
+                    setHeaderSearchQuery('');
                   }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-[#F1F5F9] flex items-center justify-between"
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                    headerActiveIdx === idx ? 'bg-[#EFF6FF] text-[#2563EB]' : 'hover:bg-[#F1F5F9] text-[#0F172A]'
+                  }`}
                 >
                   <div className="flex items-center gap-2">
                     {item.type === 'User' ? (
@@ -909,9 +1321,9 @@ export default function AnalystPage() {
                     ) : (
                       <Hash className="h-3.5 w-3.5 text-[#8B5CF6]" />
                     )}
-                    <span className="font-medium text-[#0F172A]">{item.label}</span>
+                    <span className="font-medium">{item.label}</span>
                   </div>
-                  <span className="text-xs text-[#64748B]">{item.fullName || item.name}</span>
+                  <span className="text-xs text-[#64748B]">{item.fullName}</span>
                 </button>
               ))}
             </div>
@@ -954,18 +1366,18 @@ export default function AnalystPage() {
       )}
 
       {/* ======================================================== */}
-      {/* 2. KHÔNG GIAN LÀM VIỆC 3 CỘT (HEIGHT: CALC(100VH - 56PX)) */}
+      {/* 2. KHÔNG GIAN LÀM VIỆC 3 CỘT                            */}
       {/* ======================================================== */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* ------------------------------------------------------ */}
-        {/* CỘT TRÁI: ĐIỀU HƯỚNG & BỘ LỌC (280PX HOẶC 64PX)       */}
+        {/* CỘT TRÁI: ĐIỀU HƯỚNG & BỘ LỌC (SIDEBAR)                */}
         {/* ------------------------------------------------------ */}
         <aside
           className={`bg-white border-r border-[#E2E8F0] shrink-0 flex flex-col justify-between transition-all duration-200 z-20 ${
             isLeftCollapsed ? 'w-16' : 'w-[280px]'
           } hidden lg:flex`}
         >
-          {/* Khối cuộn trên của Cột Trái */}
+          {/* Vùng cuộn không lồng nhau */}
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {/* 1. Menu Chức Năng (1-5) */}
             <div className="space-y-1">
@@ -1016,265 +1428,245 @@ export default function AnalystPage() {
               })}
             </div>
 
-            {/* 2. Khối Bộ Lọc Sidebar */}
+            {/* 2. Khối Bộ Lọc Sidebar dạng Accordion (Lọc tức thì không cần nút Áp dụng) */}
             {!isLeftCollapsed && (
-              <div className="pt-3 border-t border-[#E2E8F0] space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-1.5">
-                    <Filter className="h-3.5 w-3.5 text-[#2563EB]" />
-                    <span className="text-xs font-semibold text-[#0F172A]">Bộ lọc đồ thị</span>
-                    {activeFiltersCount > 0 && (
-                      <span className="w-4 h-4 rounded-full bg-[#2563EB] text-white text-[10px] font-bold flex items-center justify-center">
-                        {activeFiltersCount}
-                      </span>
-                    )}
-                  </div>
+              <div className="pt-3 border-t border-[#E2E8F0] space-y-2.5">
+                {/* Accordion 1: Loại Đỉnh */}
+                <div className="border border-[#E2E8F0] rounded-[10px] overflow-hidden bg-white">
                   <button
                     type="button"
-                    onClick={handleResetFilters}
-                    className="text-xs text-[#64748B] hover:text-[#2563EB] hover:underline"
+                    onClick={() => toggleSidebarAccordion('nodeTypes')}
+                    className="w-full p-2.5 bg-slate-50/70 hover:bg-slate-100 flex items-center justify-between text-xs font-semibold text-[#0F172A] transition-colors"
                   >
-                    Đặt lại
+                    <div className="flex items-center gap-1.5">
+                      <CircleDot className="h-3.5 w-3.5 text-[#2563EB]" />
+                      <span>Loại Đỉnh (Node)</span>
+                    </div>
+                    {sidebarAccordions.nodeTypes ? <ChevronUp className="h-3.5 w-3.5 text-[#64748B]" /> : <ChevronDown className="h-3.5 w-3.5 text-[#64748B]" />}
                   </button>
-                </div>
 
-                {/* Tìm nhanh ID người dùng / chủ đề trong sidebar */}
-                <div className="space-y-1.5 bg-[#F8FAFC] p-2.5 rounded-[10px] border border-[#E2E8F0]/70 relative">
-                  <label className="text-xs font-medium text-[#475569] block">
-                    Tìm nhanh ID người dùng / chủ đề
-                  </label>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#64748B]" />
-                    <input
-                      type="text"
-                      value={sidebarSearchQuery}
-                      onChange={(e) => handleSidebarSearchChange(e.target.value)}
-                      placeholder="Gõ @user hoặc #topic..."
-                      className="w-full h-8 pl-8 pr-2 bg-white border border-[#CBD5E1] rounded-[6px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
-                    />
-                  </div>
-                  {sidebarSuggestions.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E2E8F0] rounded-[8px] shadow-lg p-1 z-30 space-y-0.5">
-                      {sidebarSuggestions.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            handleFocusNode(item.label);
-                            setSidebarSuggestions([]);
-                            setSidebarSearchQuery('');
-                          }}
-                          className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-[#F1F5F9] flex items-center justify-between"
-                        >
-                          <span className="font-medium text-[#0F172A]">{item.label}</span>
-                          <span className="text-xs text-[#64748B]">{item.fullName || item.name}</span>
-                        </button>
-                      ))}
+                  {sidebarAccordions.nodeTypes && (
+                    <div className="p-2.5 flex flex-wrap gap-1.5 bg-white border-t border-[#E2E8F0]">
+                      {[
+                        { key: 'User', label: 'Người dùng (User)', color: '#2563EB', bgActive: 'bg-[#EFF6FF]', borderActive: 'border-[#2563EB]', textActive: 'text-[#1E40AF]' },
+                        { key: 'Post', label: 'Bài viết (Post)', color: '#F97316', bgActive: 'bg-[#FFF7ED]', borderActive: 'border-[#F97316]', textActive: 'text-[#C2410C]' },
+                        { key: 'Topic', label: 'Chủ đề (Topic)', color: '#8B5CF6', bgActive: 'bg-[#F5F3FF]', borderActive: 'border-[#8B5CF6]', textActive: 'text-[#6D28D9]' },
+                      ].map((item) => {
+                        const isSelected = !!nodeTypeFilters[item.key];
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() =>
+                              setNodeTypeFilters((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
+                            }
+                            className={`px-2 py-1 rounded-[6px] text-xs font-medium flex items-center gap-1.5 transition-all border ${
+                              isSelected
+                                ? `${item.bgActive} ${item.borderActive} ${item.textActive} shadow-xs`
+                                : 'bg-white border-[#E2E8F0] text-[#94A3B8] hover:border-slate-300'
+                            }`}
+                          >
+                            {isSelected ? (
+                              <Check className="h-3 w-3 shrink-0 stroke-[2.5]" style={{ color: item.color }} />
+                            ) : (
+                              <span className="w-2 h-2 rounded-full opacity-40 shrink-0" style={{ backgroundColor: item.color }} />
+                            )}
+                            <span>{item.label}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
 
-                {/* Chip Loại Đỉnh (Node) */}
-                <div className="space-y-1.5 bg-[#F8FAFC] p-2.5 rounded-[10px] border border-[#E2E8F0]/70">
-                  <label className="text-xs font-medium text-[#475569] block">Loại Đỉnh (Node)</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { key: 'User', label: 'Người dùng (User)', color: '#2563EB', bgActive: 'bg-[#EFF6FF]', borderActive: 'border-[#2563EB]', textActive: 'text-[#1E40AF]' },
-                      { key: 'Post', label: 'Bài viết (Post)', color: '#F97316', bgActive: 'bg-[#FFF7ED]', borderActive: 'border-[#F97316]', textActive: 'text-[#C2410C]' },
-                      { key: 'Topic', label: 'Chủ đề (Topic)', color: '#8B5CF6', bgActive: 'bg-[#F5F3FF]', borderActive: 'border-[#8B5CF6]', textActive: 'text-[#6D28D9]' },
-                    ].map((item) => {
-                      const isSelected = !!nodeTypeFilters[item.key];
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          aria-pressed={isSelected}
-                          onClick={() =>
-                            setNodeTypeFilters((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
-                          }
-                          className={`px-2.5 py-1.5 rounded-[8px] text-xs font-medium flex items-center gap-1.5 transition-all border ${
-                            isSelected
-                              ? `${item.bgActive} ${item.borderActive} ${item.textActive} shadow-xs`
-                              : 'bg-white border-[#E2E8F0] text-[#94A3B8] hover:border-slate-300'
-                          }`}
-                        >
-                          {isSelected ? (
-                            <Check className="h-3 w-3 shrink-0 stroke-[2.5]" style={{ color: item.color }} />
-                          ) : (
-                            <span className="w-2 h-2 rounded-full opacity-40 shrink-0" style={{ backgroundColor: item.color }} />
-                          )}
-                          <span>{item.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                {/* Accordion 2: Loại Quan Hệ (7 Loại, nhãn 1 dòng) */}
+                <div className="border border-[#E2E8F0] rounded-[10px] overflow-hidden bg-white">
+                  <button
+                    type="button"
+                    onClick={() => toggleSidebarAccordion('relTypes')}
+                    className="w-full p-2.5 bg-slate-50/70 hover:bg-slate-100 flex items-center justify-between text-xs font-semibold text-[#0F172A] transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Share2 className="h-3.5 w-3.5 text-[#F97316]" />
+                      <span>Loại Cạnh (7 Quan hệ)</span>
+                    </div>
+                    {sidebarAccordions.relTypes ? <ChevronUp className="h-3.5 w-3.5 text-[#64748B]" /> : <ChevronDown className="h-3.5 w-3.5 text-[#64748B]" />}
+                  </button>
+
+                  {sidebarAccordions.relTypes && (
+                    <div className="p-2 space-y-1 bg-white border-t border-[#E2E8F0]">
+                      {ALL_REL_TYPES.map((rel) => {
+                        const isChecked = !!relTypeFilters[rel.key];
+                        return (
+                          <button
+                            key={rel.key}
+                            type="button"
+                            aria-pressed={isChecked}
+                            onClick={() =>
+                              setRelTypeFilters((prev) => ({ ...prev, [rel.key]: !prev[rel.key] }))
+                            }
+                            className={`w-full flex items-center justify-between p-1.5 rounded-[6px] text-xs transition-all border ${
+                              isChecked
+                                ? 'bg-white border-[#CBD5E1] text-[#0F172A] shadow-2xs'
+                                : 'bg-[#F8FAFC] border-transparent text-[#94A3B8] opacity-65'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 truncate pr-1">
+                              <span
+                                className={`w-3.5 h-3.5 rounded flex items-center justify-center border shrink-0 transition-colors ${
+                                  isChecked ? 'bg-[#2563EB] border-[#2563EB] text-white' : 'border-[#CBD5E1] bg-white'
+                                }`}
+                              >
+                                {isChecked && <Check className="h-2.5 w-2.5 stroke-[3]" />}
+                              </span>
+                              <span className="font-medium text-[#1E293B] truncate">{rel.vi}</span>
+                              <span className="text-[10px] font-mono text-[#64748B]">({rel.en})</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs text-[#64748B] tabular-nums font-mono text-right">
+                                {formatNumberVi(rel.count)}
+                              </span>
+                              <svg width="18" height="6" className="shrink-0">
+                                <line
+                                  x1="0"
+                                  y1="3"
+                                  x2="18"
+                                  y2="3"
+                                  stroke={rel.color}
+                                  strokeWidth="2"
+                                  strokeDasharray={rel.style === 'dashed' ? '3 2' : 'none'}
+                                />
+                              </svg>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                {/* Danh sách 7 loại Quan hệ (Cạnh) */}
-                <div className="space-y-1.5 bg-[#F8FAFC] p-2.5 rounded-[10px] border border-[#E2E8F0]/70">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-[#475569] block">Loại Cạnh (7 Quan hệ)</label>
-                    <span className="text-xs text-[#64748B]">
-                      {Object.values(relTypeFilters).filter(Boolean).length}/7
-                    </span>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto space-y-1 pr-0.5">
-                    {ALL_REL_TYPES.map((rel) => {
-                      const isChecked = !!relTypeFilters[rel.key];
-                      return (
-                        <button
-                          key={rel.key}
-                          type="button"
-                          aria-pressed={isChecked}
-                          onClick={() =>
-                            setRelTypeFilters((prev) => ({ ...prev, [rel.key]: !prev[rel.key] }))
-                          }
-                          className={`w-full flex items-center justify-between p-1.5 rounded-[8px] text-xs transition-all border ${
-                            isChecked
-                              ? 'bg-white border-[#CBD5E1] text-[#0F172A] shadow-2xs'
-                              : 'bg-[#F8FAFC] border-transparent text-[#94A3B8] opacity-65'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-colors ${
-                                isChecked
-                                  ? 'bg-[#2563EB] border-[#2563EB] text-white'
-                                  : 'border-[#CBD5E1] bg-white'
-                              }`}
-                            >
-                              {isChecked && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                            </span>
-                            <span className="font-medium text-[#1E293B]">
-                              {rel.vi} ({rel.en})
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-[#64748B] tabular-nums font-mono">
-                              {formatNumberVi(rel.count)}
-                            </span>
-                            <svg width="22" height="6" className="shrink-0">
-                              <line
-                                x1="0"
-                                y1="3"
-                                x2="22"
-                                y2="3"
-                                stroke={rel.color}
-                                strokeWidth="2"
-                                strokeDasharray={rel.style === 'dashed' ? '4 3' : 'none'}
-                              />
-                            </svg>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Khoảng Thời Gian */}
-                <div className="space-y-1.5 bg-[#F8FAFC] p-2.5 rounded-[10px] border border-[#E2E8F0]/70">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-[#475569] flex items-center gap-1">
+                {/* Accordion 3: Khoảng Thời Gian */}
+                <div className="border border-[#E2E8F0] rounded-[10px] overflow-hidden bg-white">
+                  <button
+                    type="button"
+                    onClick={() => toggleSidebarAccordion('time')}
+                    className="w-full p-2.5 bg-slate-50/70 hover:bg-slate-100 flex items-center justify-between text-xs font-semibold text-[#0F172A] transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-[#10B981]" />
                       <span>Khoảng thời gian</span>
-                      <span
-                        className="cursor-help text-[#64748B]"
-                        title="Bộ lọc thời gian áp dụng cho thống kê tương tác theo chủ đề, bài viết mới và tần suất hoạt động."
-                      >
-                        <Info className="h-3.5 w-3.5" />
-                      </span>
-                    </label>
-                  </div>
-                  <div className="grid grid-cols-4 gap-1 text-xs">
-                    {[
-                      { id: '7d', label: '7 ngày' },
-                      { id: '30d', label: '30 ngày' },
-                      { id: '90d', label: '90 ngày' },
-                      { id: 'custom', label: 'Tùy chỉnh' },
-                    ].map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => setTimePreset(preset.id)}
-                        className={`py-1.5 rounded-[6px] text-center text-xs font-medium transition-colors ${
-                          timePreset === preset.id
-                            ? 'bg-[#2563EB] text-white shadow-2xs'
-                            : 'bg-white text-[#475569] border border-[#E2E8F0] hover:bg-slate-100'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                  {timePreset === 'custom' && (
-                    <div className="pt-2 space-y-1.5 animate-in fade-in duration-100">
-                      <div>
-                        <label className="text-xs text-[#64748B] block mb-0.5">Từ ngày</label>
-                        <input
-                          type="date"
-                          value={dateRange.from}
-                          onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
-                          className="w-full text-xs p-1.5 bg-white border border-[#CBD5E1] rounded-[6px]"
-                        />
+                    </div>
+                    {sidebarAccordions.time ? <ChevronUp className="h-3.5 w-3.5 text-[#64748B]" /> : <ChevronDown className="h-3.5 w-3.5 text-[#64748B]" />}
+                  </button>
+
+                  {sidebarAccordions.time && (
+                    <div className="p-2.5 space-y-2 bg-white border-t border-[#E2E8F0]">
+                      <div className="grid grid-cols-4 gap-1 text-xs">
+                        {[
+                          { id: '7d', label: '7 ngày' },
+                          { id: '30d', label: '30 ngày' },
+                          { id: '90d', label: '90 ngày' },
+                          { id: 'custom', label: 'Tùy chỉnh' },
+                        ].map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => setTimePreset(preset.id)}
+                            className={`py-1 rounded text-center text-xs font-medium transition-colors ${
+                              timePreset === preset.id
+                                ? 'bg-[#2563EB] text-white shadow-2xs'
+                                : 'bg-slate-50 text-[#475569] border border-[#E2E8F0] hover:bg-slate-100'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
                       </div>
-                      <div>
-                        <label className="text-xs text-[#64748B] block mb-0.5">Đến ngày</label>
-                        <input
-                          type="date"
-                          value={dateRange.to}
-                          onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
-                          className="w-full text-xs p-1.5 bg-white border border-[#CBD5E1] rounded-[6px]"
-                        />
-                      </div>
+
+                      {timePreset === 'custom' && (
+                        <div className="pt-1.5 space-y-1.5 animate-in fade-in duration-100">
+                          <div>
+                            <label className="text-xs text-[#64748B] block mb-0.5">Từ ngày</label>
+                            <input
+                              type="date"
+                              value={dateRange.from}
+                              onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
+                              className="w-full text-xs p-1 bg-white border border-[#CBD5E1] rounded"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-[#64748B] block mb-0.5">Đến ngày</label>
+                            <input
+                              type="date"
+                              value={dateRange.to}
+                              onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
+                              className="w-full text-xs p-1 bg-white border border-[#CBD5E1] rounded"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-
-                {/* Nút Áp dụng bộ lọc */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    showToast('Đã áp dụng các tiêu chí bộ lọc đồ thị');
-                    if (activeMenu !== 'overview' && cyRef.current) {
-                      cyRef.current.fit(40);
-                    }
-                  }}
-                  className="w-full h-8 px-3 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                >
-                  <Filter className="h-3.5 w-3.5" />
-                  <span>Áp dụng bộ lọc</span>
-                  {activeFiltersCount > 0 && (
-                    <span className="ml-1 px-1.5 py-0.2 rounded-full bg-white/20 text-white text-xs font-bold">
-                      {activeFiltersCount}
-                    </span>
-                  )}
-                </button>
               </div>
             )}
           </div>
 
-          {/* Nút thu gọn / mở rộng Sidebar Trái */}
-          <div className="p-2 border-t border-[#E2E8F0] flex items-center justify-between">
-            {!isLeftCollapsed && (
-              <span className="text-xs text-[#64748B] pl-2">Thu gọn menu</span>
+          {/* Footer Cố Định Sidebar: Nút Đặt lại & Thu gọn */}
+          <div className="p-3 border-t border-[#E2E8F0] flex items-center justify-between bg-slate-50/50">
+            {!isLeftCollapsed ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNodeTypeFilters({ User: true, Post: true, Topic: true });
+                    setRelTypeFilters({
+                      FOLLOWS: true,
+                      LIKED: true,
+                      ABOUT: true,
+                      POSTED: true,
+                      INTERESTED_IN: true,
+                      COMMENTED: true,
+                      SHARED: true,
+                    });
+                    setTimePreset('30d');
+                    showToast('Đã đặt lại toàn bộ bộ lọc');
+                  }}
+                  className="text-xs font-medium text-[#64748B] hover:text-[#2563EB] hover:underline flex items-center gap-1"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span>Đặt lại bộ lọc</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsLeftCollapsed(true)}
+                  className="p-1.5 rounded-lg hover:bg-slate-200/60 text-[#64748B]"
+                  title="Thu gọn sidebar"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsLeftCollapsed(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-200/60 text-[#64748B] mx-auto"
+                title="Mở rộng sidebar"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             )}
-            <button
-              type="button"
-              onClick={() => setIsLeftCollapsed(!isLeftCollapsed)}
-              className="p-1.5 rounded-lg hover:bg-slate-100 text-[#64748B] hover:text-[#0F172A] mx-auto"
-              title={isLeftCollapsed ? 'Mở rộng cột' : 'Thu gọn cột'}
-            >
-              {isLeftCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </button>
           </div>
         </aside>
 
         {/* ------------------------------------------------------ */}
-        {/* CỘT GIỮA: KHÔNG GIAN LÀM VIỆC CHÍNH (FLEX-1)          */}
+        {/* CỘT GIỮA: KHÔNG GIAN LÀM VIỆC CHÍNH                    */}
         {/* ------------------------------------------------------ */}
-        <main className="flex-1 min-w-[560px] flex flex-col overflow-hidden bg-[#F8FAFC] relative">
+        <main className="flex-1 min-w-[500px] flex flex-col overflow-hidden bg-[#F8FAFC] relative">
           {/* Header thanh công cụ Cột Giữa */}
           <div className="h-12 bg-white border-b border-[#E2E8F0] px-4 flex items-center justify-between gap-3 shrink-0 z-10">
-            {/* Tên chức năng hiện tại */}
+            {/* Tên chức năng & Số phần tử hiển thị / đã nạp */}
             <div className="flex items-center gap-2">
               <span
                 className={`w-2.5 h-2.5 rounded-full ${
@@ -1291,40 +1683,107 @@ export default function AnalystPage() {
               />
               <h1 className="text-sm font-semibold text-[#0F172A]">
                 {activeMenu === 'overview' && 'Tổng quan hệ thống'}
-                {activeMenu === 'explore' && 'Khám phá cấu trúc đồ thị'}
+                {activeMenu === 'explore' && 'Khám phá đồ thị'}
                 {activeMenu === 'pagerank' && 'Xếp hạng ảnh hưởng & PageRank'}
                 {activeMenu === 'communities' && 'Bản đồ Phân cụm Cộng đồng'}
                 {activeMenu === 'shortest_path' && 'Tìm đường đi ngắn nhất'}
               </h1>
               {activeMenu !== 'overview' && (
-                <span className="text-xs text-[#64748B] hidden md:inline">
-                  • Đang hiển thị {graphData.nodes.length} đỉnh, {graphData.edges.length} cạnh
+                <span className="text-xs text-[#64748B] hidden md:inline font-mono">
+                  • Đang hiển thị {visibleCounts.visibleNodes}/{visibleCounts.totalNodes} đỉnh, {visibleCounts.visibleEdges}/{visibleCounts.totalEdges} cạnh
                 </span>
               )}
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons: Dropdown Bố cục, Sắp xếp lại, Toàn màn hình, Xuất */}
             <div className="flex items-center gap-2">
+              {activeMenu !== 'overview' && (
+                <>
+                  {/* Dropdown Layout */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsLayoutDropdownOpen(!isLayoutDropdownOpen)}
+                      className="h-7 px-2.5 rounded-[6px] border border-[#E2E8F0] bg-white text-xs font-medium text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 flex items-center gap-1.5 transition-colors"
+                      title="Chọn giải thuật bố cục đồ thị"
+                    >
+                      <Workflow className="h-3.5 w-3.5 text-[#2563EB]" />
+                      <span className="hidden sm:inline">
+                        {graphLayout === 'fcose' ? 'Lực fCoSE' : graphLayout === 'concentric' ? 'Đồng tâm' : graphLayout === 'circle' ? 'Vòng tròn' : 'Lưới'}
+                      </span>
+                      <ChevronDown className="h-3 w-3 text-[#94A3B8]" />
+                    </button>
+
+                    {isLayoutDropdownOpen && (
+                      <div className="absolute top-8 right-0 w-44 bg-white border border-[#E2E8F0] rounded-[10px] shadow-lg p-1 z-30 animate-in fade-in zoom-in-95 duration-100">
+                        {[
+                          { id: 'fcose', name: 'Lực đàn hồi (fCoSE)' },
+                          { id: 'concentric', name: 'Đồng tâm (Concentric)' },
+                          { id: 'circle', name: 'Vòng tròn (Circle)' },
+                          { id: 'grid', name: 'Lưới đều (Grid)' },
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleChangeLayout(item.id)}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-[6px] text-xs flex items-center justify-between ${
+                              graphLayout === item.id ? 'bg-[#EFF6FF] text-[#2563EB] font-semibold' : 'text-[#334155] hover:bg-slate-50'
+                            }`}
+                          >
+                            <span>{item.name}</span>
+                            {graphLayout === item.id && <Check className="h-3.5 w-3.5 text-[#2563EB]" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Nút Sắp xếp lại */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      runCurrentLayout({ fit: true, randomize: false });
+                      showToast('Đã tính toán và sắp xếp lại bố cục');
+                    }}
+                    className="h-7 px-2 rounded-[6px] border border-[#E2E8F0] bg-white text-xs font-medium text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 flex items-center gap-1"
+                    title="Chạy lại giải thuật bố cục"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 text-[#64748B]" />
+                    <span className="hidden sm:inline">Sắp xếp lại</span>
+                  </button>
+
+                  {/* Nút Toàn màn hình */}
+                  <button
+                    type="button"
+                    onClick={handleToggleFullscreen}
+                    className="p-1.5 rounded-[6px] border border-[#E2E8F0] bg-white text-[#475569] hover:text-[#0F172A] hover:bg-slate-50"
+                    title={isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình canvas'}
+                  >
+                    {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                  </button>
+                </>
+              )}
+
+              {/* Nút Xuất PNG / JSON */}
               <button
                 type="button"
-                onClick={handleExportPNG}
-                className="h-7 px-2.5 rounded-[6px] border border-[#E2E8F0] bg-white text-xs font-medium text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 flex items-center gap-1.5 transition-colors"
-                title="Xuất ảnh PNG đồ thị"
+                onClick={() => {
+                  if (!cyRef.current) return;
+                  const png64 = cyRef.current.png({ full: true, scale: 2, bg: isDarkCanvas ? '#0B1220' : '#FFFFFF' });
+                  const link = document.createElement('a');
+                  link.href = png64;
+                  link.download = `falkordb-graph-${activeMenu}-${Date.now()}.png`;
+                  link.click();
+                  showToast('Đã xuất ảnh PNG đồ thị');
+                }}
+                className="h-7 px-2 rounded-[6px] border border-[#E2E8F0] bg-white text-xs font-medium text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 flex items-center gap-1"
+                title="Xuất ảnh PNG chất lượng cao (2x)"
               >
                 <Download className="h-3.5 w-3.5 text-[#64748B]" />
                 <span className="hidden sm:inline">PNG</span>
               </button>
-              <button
-                type="button"
-                onClick={handleExportJSON}
-                className="h-7 px-2.5 rounded-[6px] border border-[#E2E8F0] bg-white text-xs font-medium text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 flex items-center gap-1.5 transition-colors"
-                title="Xuất dữ liệu JSON"
-              >
-                <FileText className="h-3.5 w-3.5 text-[#64748B]" />
-                <span className="hidden sm:inline">JSON</span>
-              </button>
 
-              {/* Toggle Right Panel (Alt+R hoặc phím ]) */}
+              {/* Toggle Right Panel */}
               <button
                 type="button"
                 onClick={toggleRightVisible}
@@ -1340,15 +1799,15 @@ export default function AnalystPage() {
           </div>
 
           {/* Dải Breadcrumbs và Trạng thái Bộ Lọc Đang Bật */}
-          <div className="px-4 py-2 bg-white/80 backdrop-blur-xs border-b border-[#E2E8F0] flex items-center justify-between gap-3 shrink-0 text-xs">
+          <div className="px-4 py-1.5 bg-white/80 backdrop-blur-xs border-b border-[#E2E8F0] flex items-center justify-between gap-3 shrink-0 text-xs">
             <div className="flex items-center gap-2 text-[#475569] flex-wrap">
-              <span className="text-[#64748B]">Phân tích đồ thị</span>
+              <span className="text-[#64748B]">Phân tích</span>
               <ChevronRight className="h-3 w-3 text-[#94A3B8]" />
               <span className="font-semibold text-[#0F172A]">
                 {activeMenu === 'overview'
                   ? 'Tổng quan hệ thống'
                   : activeMenu === 'explore'
-                  ? 'Khám phá cấu trúc'
+                  ? 'Khám phá đồ thị'
                   : activeMenu === 'pagerank'
                   ? 'KOLs & PageRank'
                   : activeMenu === 'communities'
@@ -1356,7 +1815,7 @@ export default function AnalystPage() {
                   : 'Đường đi ngắn nhất'}
               </span>
               <span className="text-slate-300">|</span>
-              <span className="text-[#64748B]">Bộ lọc:</span>
+              <span className="text-[#64748B]">Đang hiển thị:</span>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {Object.entries(nodeTypeFilters)
                   .filter(([, v]) => v)
@@ -1368,16 +1827,20 @@ export default function AnalystPage() {
                       {k === 'User' ? 'Người dùng' : k === 'Post' ? 'Bài viết' : 'Chủ đề'}
                     </span>
                   ))}
-                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[#475569] border border-slate-200 text-xs font-medium">
-                  {timePreset === '7d'
-                    ? '7 ngày'
-                    : timePreset === '30d'
-                    ? '30 ngày'
-                    : timePreset === '90d'
-                    ? '90 ngày'
-                    : 'Tùy chỉnh'}
-                </span>
+                {timePreset !== '30d' && (
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[#475569] border border-slate-200 text-xs font-medium">
+                    {timePreset === '7d' ? '7 ngày' : timePreset === '90d' ? '90 ngày' : 'Tùy chỉnh'}
+                  </span>
+                )}
               </div>
+            </div>
+
+            {/* Trạng thái Kết nối / Dữ liệu */}
+            <div className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${isOffline ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+              <span className="text-xs text-[#64748B] font-medium">
+                {isOffline ? 'Dữ liệu ngoại tuyến' : 'Đang kết nối FalkorDB'}
+              </span>
             </div>
           </div>
 
@@ -1388,7 +1851,6 @@ export default function AnalystPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Thẻ Thống Kê Tổng Quan */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* 1. Tổng Đỉnh */}
                 <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
                   <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
                     <span>Tổng Đỉnh (Nodes)</span>
@@ -1400,7 +1862,6 @@ export default function AnalystPage() {
                   <div className="text-xs text-[#64748B]">10.000 người dùng • 30.000 bài viết • 50 chủ đề</div>
                 </div>
 
-                {/* 2. Tổng Cạnh */}
                 <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
                   <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
                     <span>Tổng Cạnh (Edges)</span>
@@ -1412,7 +1873,6 @@ export default function AnalystPage() {
                   <div className="text-xs text-emerald-600 font-medium">+15,2% so với 30 ngày trước</div>
                 </div>
 
-                {/* 3. Bậc Trung Bình */}
                 <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
                   <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
                     <div className="flex items-center gap-1">
@@ -1437,7 +1897,6 @@ export default function AnalystPage() {
                   </div>
                 </div>
 
-                {/* 4. Độ Trễ Cypher */}
                 <div className="bg-white p-4 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-1">
                   <div className="text-xs text-[#64748B] font-medium flex items-center justify-between">
                     <span>Độ trễ Cypher (P95)</span>
@@ -1450,19 +1909,16 @@ export default function AnalystPage() {
                 </div>
               </div>
 
-              {/* Biểu đồ cột Tương tác theo Chủ đề */}
+              {/* Biểu đồ tương tác Chủ đề */}
               <div className="bg-white p-5 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-sm font-semibold text-[#0F172A]">
-                      Tương tác theo Chủ đề thảo luận
-                    </h2>
+                    <h2 className="text-sm font-semibold text-[#0F172A]">Tương tác theo Chủ đề thảo luận</h2>
                     <p className="text-xs text-[#64748B] mt-0.5">
                       So sánh lượt Thích (Like), Bình luận (Comment) và Chia sẻ (Share) trên các chủ đề hàng đầu
                     </p>
                   </div>
 
-                  {/* Tabs chọn thước đo */}
                   <div className="flex items-center gap-1 bg-[#F1F5F9] p-1 rounded-lg text-xs self-start sm:self-auto">
                     {[
                       { id: 'all', label: 'Tất cả' },
@@ -1486,7 +1942,6 @@ export default function AnalystPage() {
                   </div>
                 </div>
 
-                {/* Legend rõ ràng phía trên biểu đồ */}
                 <div className="flex items-center gap-4 text-xs font-medium text-[#475569] pt-1 border-t border-[#F1F5F9]">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-xs bg-[#0EA5E9]" />
@@ -1502,7 +1957,6 @@ export default function AnalystPage() {
                   </div>
                 </div>
 
-                {/* Biểu đồ Recharts */}
                 <div className="h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} margin={{ top: 15, right: 15, left: 10, bottom: 25 }}>
@@ -1548,9 +2002,7 @@ export default function AnalystPage() {
               {/* Biểu đồ phân phối bậc (Power Law) */}
               <div className="bg-white p-5 rounded-[12px] border border-[#E2E8F0] shadow-xs space-y-4">
                 <div>
-                  <h2 className="text-sm font-semibold text-[#0F172A]">
-                    Phân phối bậc đồ thị (luật lũy thừa)
-                  </h2>
+                  <h2 className="text-sm font-semibold text-[#0F172A]">Phân phối bậc đồ thị (luật lũy thừa)</h2>
                   <p className="text-xs text-[#64748B] mt-0.5">
                     Đa số đỉnh có bậc liên kết thấp; số ít đỉnh trung tâm nắm giữ hàng nghìn liên kết theo mô hình mạng không tỷ lệ (Scale-Free).
                   </p>
@@ -1558,10 +2010,7 @@ export default function AnalystPage() {
 
                 <div className="h-56 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={processedDegreeBuckets}
-                      margin={{ top: 15, right: 15, left: 10, bottom: 20 }}
-                    >
+                    <BarChart data={processedDegreeBuckets} margin={{ top: 15, right: 15, left: 10, bottom: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                       <XAxis
                         dataKey="bucket"
@@ -1596,13 +2045,7 @@ export default function AnalystPage() {
                           padding: '8px 12px',
                         }}
                       />
-                      <Bar
-                        dataKey="count"
-                        name="Số lượng Đỉnh"
-                        fill="#2563EB"
-                        radius={[4, 4, 0, 0]}
-                        maxBarSize={48}
-                      />
+                      <Bar dataKey="count" name="Số lượng Đỉnh" fill="#2563EB" radius={[4, 4, 0, 0]} maxBarSize={48} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1614,21 +2057,65 @@ export default function AnalystPage() {
           {/* TABS 2-5: KHÔNG GIAN ĐỒ THỊ CYTOSCAPE                    */}
           {/* ======================================================== */}
           {activeMenu !== 'overview' && (
-            <div className={`flex-1 relative overflow-hidden transition-colors ${isDarkCanvas ? 'bg-[#0B1220]' : 'bg-[#F8FAFC]'}`}>
-              {/* Toolbar Tab Khám Phá */}
+            <div
+              ref={canvasWrapperRef}
+              className={`flex-1 relative overflow-hidden transition-colors ${
+                isDarkCanvas ? 'bg-[#0B1220]' : 'bg-[#F8FAFC]'
+              }`}
+            >
+              {/* Toolbar Khảo Sát Tâm Điểm (Tab Khám Phá) */}
               {activeMenu === 'explore' && (
                 <div className="absolute top-3 left-4 right-4 z-20 max-w-xl mx-auto bg-white/95 backdrop-blur-md border border-[#E2E8F0] rounded-[10px] p-2 shadow-sm flex items-center gap-2">
                   <Compass className="h-4 w-4 text-[#10B981] shrink-0" />
-                  <input
-                    type="text"
-                    placeholder="Đặt tâm điểm khảo sát (vd: @alice, @admin, #api)..."
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && e.target.value.trim()) {
-                        handleFocusNode(e.target.value.trim());
+                  <div className="flex-1 relative">
+                    <input
+                      ref={centerSearchInputRef}
+                      type="text"
+                      value={centerSearchQuery}
+                      onChange={(e) => {
+                        setCenterSearchQuery(e.target.value);
+                        performAutocomplete(e.target.value, setCenterSuggestions, setCenterActiveIdx);
+                      }}
+                      onKeyDown={(e) =>
+                        handleAutocompleteKeyDown(
+                          e,
+                          centerSuggestions,
+                          centerActiveIdx,
+                          setCenterActiveIdx,
+                          (item) => {
+                            handleFocusOrLoadNode(item.label);
+                            setCenterSuggestions([]);
+                            setCenterSearchQuery('');
+                          },
+                          () => setCenterSuggestions([])
+                        )
                       }
-                    }}
-                    className="flex-1 h-7 bg-slate-50 border border-[#E2E8F0] rounded px-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
-                  />
+                      placeholder="Đặt tâm điểm khảo sát (vd: @alice, @admin, #api)..."
+                      className="w-full h-7 bg-slate-50 border border-[#E2E8F0] rounded px-2 text-xs text-[#0F172A] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                    />
+
+                    {centerSuggestions.length > 0 && (
+                      <div className="absolute top-8 left-0 right-0 bg-white border border-[#E2E8F0] rounded-[10px] shadow-lg p-1 z-30 animate-in fade-in zoom-in-95 duration-100">
+                        {centerSuggestions.map((item, idx) => (
+                          <button
+                            key={`${item.type}-${item.id}`}
+                            type="button"
+                            onClick={() => {
+                              handleFocusOrLoadNode(item.label);
+                              setCenterSuggestions([]);
+                              setCenterSearchQuery('');
+                            }}
+                            className={`w-full text-left px-2 py-1.5 rounded-[6px] text-xs flex items-center justify-between ${
+                              centerActiveIdx === idx ? 'bg-[#EFF6FF] text-[#2563EB]' : 'hover:bg-[#F1F5F9] text-[#0F172A]'
+                            }`}
+                          >
+                            <span className="font-medium">{item.label}</span>
+                            <span className="text-xs text-[#64748B]">{item.fullName}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <span className="text-xs text-[#64748B] shrink-0">Nhấn Enter để định vị</span>
                 </div>
               )}
@@ -1641,17 +2128,17 @@ export default function AnalystPage() {
                       <Award className="h-4 w-4 text-[#F59E0B]" />
                       <span className="font-semibold text-[#0F172A]">Chế độ Quyền lực PageRank</span>
                       <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                        Top 5 có hào quang vàng
+                        Top KOLs có viền hào quang vàng
                       </span>
                     </div>
-                    <span className="text-xs text-[#64748B]">Bấm vào KOL để focus mạng lưới</span>
+                    <span className="text-xs text-[#64748B]">Bấm vào KOL để định vị mạng lưới</span>
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {kolsList.slice(0, 4).map((kol) => (
+                    {kolsList.slice(0, 5).map((kol) => (
                       <button
                         key={kol.id}
                         type="button"
-                        onClick={() => handleFocusNode(kol.username)}
+                        onClick={() => handleFocusOrLoadNode(kol.username)}
                         className="px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-xs text-amber-900 font-medium flex items-center gap-1.5 transition-colors"
                       >
                         <span className="w-4 h-4 rounded-full bg-amber-400 text-amber-950 text-[10px] font-bold flex items-center justify-center">
@@ -1673,10 +2160,10 @@ export default function AnalystPage() {
                       <Layers className="h-4 w-4 text-[#8B5CF6]" />
                       <span className="font-semibold text-[#0F172A]">Bộ lọc Cụm Cộng đồng</span>
                     </div>
-                    {activeCommunityHighlight && (
+                    {communityHighlight && (
                       <button
                         type="button"
-                        onClick={() => handleHighlightCommunity(activeCommunityHighlight)}
+                        onClick={() => handleToggleCommunityHighlight(communityHighlight)}
                         className="text-xs text-[#64748B] hover:text-[#2563EB]"
                       >
                         Hiển thị tất cả cụm
@@ -1684,15 +2171,15 @@ export default function AnalystPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {communitiesList.slice(0, 6).map((c) => {
+                    {communitiesList.slice(0, 8).map((c) => {
                       const cid = String(c.id);
-                      const isSelected = activeCommunityHighlight === cid;
-                      const color = COMMUNITY_COLORS[(Number(c.id) - 1) % COMMUNITY_COLORS.length];
+                      const isSelected = String(communityHighlight) === cid;
+                      const color = getSafeCommunityColor(c.id);
                       return (
                         <button
                           key={c.id}
                           type="button"
-                          onClick={() => handleHighlightCommunity(cid)}
+                          onClick={() => handleToggleCommunityHighlight(cid)}
                           className={`px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all ${
                             isSelected
                               ? 'ring-2 ring-black text-white shadow-xs'
@@ -1700,10 +2187,7 @@ export default function AnalystPage() {
                           }`}
                           style={{ backgroundColor: isSelected ? color : undefined }}
                         >
-                          <span
-                            className="w-2.5 h-2.5 rounded-full"
-                            style={{ backgroundColor: color }}
-                          />
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
                           <span>Cụm #{c.id}</span>
                           <span className={`text-xs ${isSelected ? 'text-white/90' : 'text-[#64748B]'}`}>
                             ({formatNumberVi(c.size)} TV)
@@ -1726,7 +2210,10 @@ export default function AnalystPage() {
                     {pathResult && (
                       <button
                         type="button"
-                        onClick={handleClearPath}
+                        onClick={() => {
+                          setPathResult(null);
+                          reapplySelectionStates();
+                        }}
                         className="text-xs text-[#64748B] hover:text-red-600 hover:underline"
                       >
                         Xóa kết quả
@@ -1746,7 +2233,11 @@ export default function AnalystPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={handleSwapPathUsers}
+                      onClick={() => {
+                        const temp = pathSource;
+                        setPathSource(pathTarget);
+                        setPathTarget(temp);
+                      }}
                       className="p-1.5 rounded-lg border border-[#E2E8F0] hover:bg-slate-100 text-[#64748B]"
                       title="Đảo vị trí A <-> B"
                     >
@@ -1781,14 +2272,12 @@ export default function AnalystPage() {
                           <React.Fragment key={idx}>
                             <button
                               type="button"
-                              onClick={() => handleFocusNode(step)}
+                              onClick={() => handleFocusOrLoadNode(step)}
                               className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-mono font-medium hover:bg-amber-100"
                             >
                               @{step}
                             </button>
-                            {idx < pathResult.steps.length - 1 && (
-                              <ArrowRight className="h-3 w-3 text-slate-400" />
-                            )}
+                            {idx < pathResult.steps.length - 1 && <ArrowRight className="h-3 w-3 text-slate-400" />}
                           </React.Fragment>
                         ))}
                       </div>
@@ -1797,127 +2286,368 @@ export default function AnalystPage() {
                 </div>
               )}
 
+              {/* Trạng thái Loading Overlay */}
+              {loading && (
+                <div className="absolute inset-0 z-30 bg-white/70 backdrop-blur-xs flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="h-6 w-6 text-[#2563EB] animate-spin" />
+                  <span className="text-xs font-medium text-[#475569]">Đang tải cấu trúc đồ thị...</span>
+                </div>
+              )}
+
+              {/* Trạng thái Lỗi Banner */}
+              {error && (
+                <div className="absolute top-16 left-4 right-4 z-30 max-w-md mx-auto bg-rose-50 border border-rose-200 text-rose-800 rounded-[10px] p-3 text-xs flex items-center justify-between shadow-md">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadInitialData}
+                    className="px-2 py-1 bg-white border border-rose-300 rounded font-semibold text-rose-700 hover:bg-rose-100"
+                  >
+                    Thử lại
+                  </button>
+                </div>
+              )}
+
+              {/* Trạng thái Rỗng khi 0 node visible */}
+              {visibleCounts.totalNodes > 0 && visibleCounts.visibleNodes === 0 && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center p-6 pointer-events-none">
+                  <div className="p-6 bg-white/95 backdrop-blur-md border border-[#E2E8F0] rounded-[16px] shadow-lg max-w-sm space-y-2 pointer-events-auto">
+                    <CircleDot className="h-8 w-8 text-[#94A3B8] mx-auto" />
+                    <h3 className="text-sm font-semibold text-[#0F172A]">Không có đỉnh nào thỏa mãn bộ lọc</h3>
+                    <p className="text-xs text-[#64748B]">
+                      Tất cả các loại đỉnh hoặc quan hệ hiện đang bị ẩn. Vui lòng bật lại bộ lọc loại đỉnh ở cột bên trái để hiển thị đồ thị.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setNodeTypeFilters({ User: true, Post: true, Topic: true })}
+                      className="mt-2 h-7 px-3 rounded-lg bg-[#2563EB] text-white text-xs font-medium hover:bg-[#1D4ED8]"
+                    >
+                      Bật tất cả loại đỉnh
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Cytoscape Container */}
               <div ref={cyContainerRef} className="w-full h-full" />
+
+              {/* Hover Tooltip (Hiển thị khi di chuột qua node) */}
+              {hoveredNode && (
+                <div
+                  className="absolute z-30 pointer-events-none bg-[#0F172A] text-white text-xs p-2.5 rounded-[10px] shadow-xl space-y-1 transform -translate-x-1/2 -translate-y-full mb-3 animate-in fade-in zoom-in-95 duration-100"
+                  style={{ left: hoveredNode.x, top: hoveredNode.y }}
+                >
+                  <div className="font-semibold text-white flex items-center gap-1.5">
+                    <span>{hoveredNode.data.label}</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-normal">
+                      {hoveredNode.data.type}
+                    </span>
+                  </div>
+                  {hoveredNode.data.fullName && (
+                    <div className="text-[11px] text-slate-300">{hoveredNode.data.fullName}</div>
+                  )}
+                  <div className="pt-1 border-t border-slate-750 text-[11px] text-slate-300 space-y-0.5">
+                    <div>Bậc liên kết: <strong className="text-white">{hoveredNode.data.degree || 0}</strong></div>
+                    <div>PageRank: <strong className="text-amber-400">{formatPctVi((hoveredNode.data.pagerank || 0) * 100, 2)}</strong></div>
+                    <div>Cộng đồng: <strong className="text-blue-400">#{hoveredNode.data.community || 1}</strong></div>
+                  </div>
+                </div>
+              )}
 
               {/* Toolbar Nổi Góc Trên Phải Canvas */}
               <div className="absolute top-4 right-4 z-10 flex flex-col gap-1.5 bg-white/95 backdrop-blur-md p-1 rounded-[10px] border border-[#E2E8F0] shadow-md">
                 <button
                   type="button"
-                  onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.25)}
+                  onClick={() => handleZoom(1.25)}
                   className="p-1.5 rounded-lg hover:bg-slate-100 text-[#475569] hover:text-[#0F172A]"
-                  title="Phóng to (Zoom In)"
+                  title="Phóng to quanh tâm khung nhìn"
                 >
                   <ZoomIn className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 0.8)}
+                  onClick={() => handleZoom(0.8)}
                   className="p-1.5 rounded-lg hover:bg-slate-100 text-[#475569] hover:text-[#0F172A]"
-                  title="Thu nhỏ (Zoom Out)"
+                  title="Thu nhỏ quanh tâm khung nhìn"
                 >
                   <ZoomOut className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => cyRef.current?.fit(60)}
+                  onClick={() => cyRef.current?.fit(50)}
                   className="p-1.5 rounded-lg hover:bg-slate-100 text-[#475569] hover:text-[#0F172A]"
-                  title="Vừa màn hình (Fit)"
+                  title="Căn vừa màn hình (Fit)"
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
                 <div className="h-px bg-[#E2E8F0] my-0.5" />
                 <button
                   type="button"
-                  onClick={() => {
-                    const nextLayout = graphLayout === 'cose' ? 'concentric' : graphLayout === 'concentric' ? 'circle' : 'cose';
-                    setGraphLayout(nextLayout);
-                    showToast(`Bố cục đồ thị: ${nextLayout === 'cose' ? 'Lực liên kết (Cose)' : nextLayout === 'concentric' ? 'Đồng tâm theo bậc (Concentric)' : 'Vòng tròn (Circle)'}`);
-                  }}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 text-[#475569] hover:text-[#0F172A]"
-                  title={`Đổi kiểu bố cục (hiện tại: ${graphLayout === 'cose' ? 'Lực liên kết' : graphLayout === 'concentric' ? 'Đồng tâm' : 'Vòng tròn'})`}
-                >
-                  <Layers className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
                   onClick={() => setIsDarkCanvas(!isDarkCanvas)}
                   className={`p-1.5 rounded-lg transition-colors ${
                     isDarkCanvas ? 'bg-[#0F172A] text-amber-400' : 'hover:bg-slate-100 text-[#64748B]'
                   }`}
-                  title={isDarkCanvas ? 'Chuyển sang nền sáng' : 'Chuyển sang nền tối đồ thị (Dark Canvas)'}
+                  title={isDarkCanvas ? 'Chuyển sang nền sáng' : 'Chuyển sang nền tối đồ thị'}
                 >
                   {isDarkCanvas ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </button>
               </div>
 
-              {/* Legend (Chú Giải) Nổi Góc Dưới Trái */}
-              <div className="absolute bottom-4 left-4 z-10 bg-white/95 backdrop-blur-md p-3 rounded-[12px] border border-[#E2E8F0] shadow-md max-w-xs text-xs space-y-2">
-                <div className="font-semibold text-[#0F172A] text-xs uppercase tracking-wider flex items-center justify-between">
-                  <span>Hình dạng & Màu sắc</span>
-                  <span className="text-xs text-slate-400 font-normal">Kích thước ~ PageRank</span>
-                </div>
+              {/* Legend (Chú Giải) Nổi Góc Dưới Trái - Thu gọn được, tiêu đề 1 dòng */}
+              <div className="absolute bottom-4 left-4 z-10 bg-white/95 backdrop-blur-md rounded-[12px] border border-[#E2E8F0] shadow-md text-xs overflow-hidden max-w-xs transition-all">
+                <button
+                  type="button"
+                  onClick={() => setIsLegendCollapsed(!isLegendCollapsed)}
+                  className="w-full px-3 py-2 flex items-center justify-between gap-2 font-semibold text-[#0F172A] hover:bg-slate-50 transition-colors"
+                >
+                  <span className="text-xs uppercase tracking-wider">Chú giải đồ thị</span>
+                  {isLegendCollapsed ? <ChevronUp className="h-3.5 w-3.5 text-[#64748B]" /> : <ChevronDown className="h-3.5 w-3.5 text-[#64748B]" />}
+                </button>
 
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
-                    <span className="text-xs text-[#475569]">User (Tròn)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-2 rounded bg-[#F97316]" />
-                    <span className="text-xs text-[#475569]">Post (Hộp)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rotate-45 bg-[#8B5CF6]" />
-                    <span className="text-xs text-[#475569]">Topic (Thoi)</span>
-                  </div>
-                </div>
+                {!isLegendCollapsed && (
+                  <div className="p-3 pt-0 space-y-2 border-t border-[#F1F5F9]">
+                    {/* Loại Node */}
+                    <div className="flex items-center gap-3 pt-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
+                        <span className="text-xs text-[#475569]">User</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-3 h-2 rounded bg-[#F97316]" />
+                        <span className="text-xs text-[#475569]">Post</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rotate-45 bg-[#8B5CF6]" />
+                        <span className="text-xs text-[#475569]">Topic</span>
+                      </div>
+                    </div>
 
-                <div className="pt-1.5 border-t border-[#E2E8F0]/70">
-                  <div className="text-xs text-[#64748B] mb-1">Cộng đồng (Bấm để làm nổi):</div>
-                  <div className="flex flex-wrap gap-1">
-                    {COMMUNITY_COLORS.map((color, idx) => {
-                      const cid = String(idx + 1);
-                      const isHighlighted = activeCommunityHighlight === cid;
-                      return (
-                        <button
-                          key={cid}
-                          type="button"
-                          onClick={() => handleHighlightCommunity(cid)}
-                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white transition-transform ${
-                            isHighlighted ? 'scale-125 ring-2 ring-black' : 'hover:scale-110'
-                          }`}
-                          style={{ backgroundColor: color }}
-                          title={`Cộng đồng #${cid}`}
-                        >
-                          {cid}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+                    {/* 7 loại cạnh */}
+                    <div className="pt-1.5 border-t border-[#F1F5F9] space-y-1">
+                      <div className="text-[11px] text-[#64748B] font-medium">Màu sắc cạnh:</div>
+                      <div className="grid grid-cols-2 gap-1 text-[11px] text-[#475569]">
+                        {ALL_REL_TYPES.map((r) => (
+                          <div key={r.key} className="flex items-center gap-1.5">
+                            <svg width="14" height="4" className="shrink-0">
+                              <line
+                                x1="0"
+                                y1="2"
+                                x2="14"
+                                y2="2"
+                                stroke={r.color}
+                                strokeWidth="2"
+                                strokeDasharray={r.style === 'dashed' ? '2 2' : 'none'}
+                              />
+                            </svg>
+                            <span className="truncate">{r.vi}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
-              {/* Banner Chỉ Số Hiệu Năng Đồ Thị */}
-              <div className="absolute bottom-4 right-4 z-10 px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-xs border border-[#E2E8F0] shadow-xs text-xs text-[#64748B] flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Hiển thị {graphData.nodes.length} đỉnh thực tế từ FalkorDB</span>
+                    {/* Chỉ hiện chip cộng đồng ở tab Cộng đồng */}
+                    {activeMenu === 'communities' && (
+                      <div className="pt-1.5 border-t border-[#F1F5F9]">
+                        <div className="text-[11px] text-[#64748B] mb-1">Cộng đồng (Bấm lọc):</div>
+                        <div className="flex flex-wrap gap-1">
+                          {COMMUNITY_COLORS.map((color, idx) => {
+                            const cid = String(idx + 1);
+                            const isHighlighted = String(communityHighlight) === cid;
+                            return (
+                              <button
+                                key={cid}
+                                type="button"
+                                onClick={() => handleToggleCommunityHighlight(cid)}
+                                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white transition-transform ${
+                                  isHighlighted ? 'scale-125 ring-2 ring-black' : 'hover:scale-110'
+                                }`}
+                                style={{ backgroundColor: color }}
+                                title={`Cộng đồng #${cid}`}
+                              >
+                                {cid}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
         </main>
 
         {/* ------------------------------------------------------ */}
-        {/* CỘT PHẢI: BỔ SUNG CỘT PHẢI THEO THIẾT KẾ (340PX)        */}
+        {/* CỘT PHẢI: CHI TIẾT THỰC THỂ & WIDGETS BỔ TRỢ          */}
         {/* ------------------------------------------------------ */}
         {isRightVisible && (
           <aside className="w-[340px] bg-white border-l border-[#E2E8F0] shrink-0 flex flex-col justify-between overflow-y-auto p-4 space-y-4 z-20 animate-in fade-in duration-150">
             <div className="space-y-4">
-              {/* WIDGET 1: PHÂN BỐ LOẠI QUAN HỆ */}
+              {/* WIDGET CHI TIẾT THỰC THỂ NẰM Ở ĐẦU CỘT TRONG CÁC TAB ĐỒ THỊ */}
+              {activeMenu !== 'overview' && (
+                <div className="bg-white rounded-[10px] border border-[#E2E8F0] overflow-hidden shadow-xs">
+                  <div
+                    onClick={() => toggleWidget('entityDetail')}
+                    className="p-3 bg-slate-50/70 hover:bg-slate-100 border-b border-[#E2E8F0] flex items-center justify-between cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <CircleDot className="h-4 w-4 text-[#2563EB]" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#0F172A]">
+                        CHI TIẾT THỰC THỂ
+                      </span>
+                    </div>
+                    <button type="button" className="text-[#64748B]">
+                      {collapsedWidgets.entityDetail ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                    </button>
+                  </div>
+
+                  {!collapsedWidgets.entityDetail && (
+                    <div className="p-3">
+                      {!selectedNode ? (
+                        <div className="p-5 bg-[#F8FAFC] border border-dashed border-[#CBD5E1] rounded-[10px] text-center space-y-1.5">
+                          <CircleDot className="h-5 w-5 text-[#94A3B8] mx-auto" />
+                          <div className="text-xs font-medium text-[#475569]">Chọn một đỉnh trên đồ thị để xem chi tiết</div>
+                          <p className="text-xs text-[#64748B]">
+                            Nhấp vào bất kỳ người dùng, bài viết hoặc chủ đề để kiểm tra các thuộc tính kết nối.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {/* Header thực thể */}
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-10 h-10 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] flex items-center justify-center font-bold text-[#2563EB] text-sm shrink-0">
+                              {selectedNode.username?.charAt(0).toUpperCase() || selectedNode.type?.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-xs text-[#0F172A] truncate">
+                                {selectedNode.fullName || selectedNode.label}
+                              </div>
+                              <div className="text-xs text-[#64748B] truncate font-mono">
+                                ID: {selectedNode.id}
+                              </div>
+                            </div>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[#F1F5F9] text-[#475569]">
+                              {selectedNode.type}
+                            </span>
+                          </div>
+
+                          {/* Thông số chi tiết */}
+                          <div className="space-y-1.5 text-xs bg-[#F8FAFC] p-2.5 rounded-[8px] border border-[#E2E8F0]">
+                            {selectedNode.content && (
+                              <div className="p-2 bg-white rounded border border-[#E2E8F0] text-xs text-[#334155] mb-1">
+                                "{selectedNode.content}"
+                              </div>
+                            )}
+                            {selectedNode.type === 'User' && (
+                              <>
+                                <div className="flex items-center justify-between py-0.5 border-b border-[#F1F5F9]">
+                                  <span className="text-[#64748B]">Người theo dõi:</span>
+                                  <span className="font-semibold text-[#0F172A] tabular-nums">
+                                    {formatNumberVi(selectedNode.followers)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between py-0.5 border-b border-[#F1F5F9]">
+                                  <span className="text-[#64748B]">Số bài viết:</span>
+                                  <span className="font-semibold text-[#0F172A] tabular-nums">
+                                    {formatNumberVi(selectedNode.posts)}
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                            <div className="flex items-center justify-between py-0.5 border-b border-[#F1F5F9]">
+                              <span className="text-[#64748B]">Bậc vào / ra / tổng:</span>
+                              <span className="font-semibold text-[#0F172A] tabular-nums font-mono">
+                                {selectedNode.inDegree || 0} / {selectedNode.outDegree || 0} / {selectedNode.degree || 0}
+                              </span>
+                            </div>
+                            <div className="py-0.5 border-b border-[#F1F5F9] space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[#64748B]">Điểm PageRank:</span>
+                                <span className="font-semibold text-[#2563EB] tabular-nums">
+                                  {formatPctVi((selectedNode.pagerank || 0) * 100, 2)}
+                                </span>
+                              </div>
+                              <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-[#2563EB] rounded-full"
+                                  style={{ width: `${Math.min(100, (selectedNode.pagerank || 0) * 300)}%` }}
+                                />
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between py-0.5">
+                              <span className="text-[#64748B]">Cộng đồng:</span>
+                              <span
+                                className="px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+                                style={{ backgroundColor: selectedNode.communityColor || getSafeCommunityColor(selectedNode.community) }}
+                              >
+                                Cụm #{selectedNode.community || 1}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 4 Nút Hành Động */}
+                          <div className="grid grid-cols-2 gap-1.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleExpandNeighborhood(selectedNode.username || selectedNode.id)}
+                              className="h-7 px-2 bg-white hover:bg-slate-50 border border-[#CBD5E1] rounded-[6px] text-xs font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
+                              title="Tải thêm các đỉnh láng giềng kề cận"
+                            >
+                              <Sparkles className="h-3 w-3 text-[#2563EB]" />
+                              <span>Mở rộng</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPathSource(selectedNode.username || selectedNode.id);
+                                setActiveMenu('shortest_path');
+                                showToast(`Đã đặt @${selectedNode.username || selectedNode.id} làm điểm A`);
+                              }}
+                              className="h-7 px-2 bg-white hover:bg-slate-50 border border-[#CBD5E1] rounded-[6px] text-xs font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
+                              title="Đặt làm điểm bắt đầu"
+                            >
+                              <RouteIcon className="h-3 w-3 text-[#10B981]" />
+                              <span>Đặt A</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPathTarget(selectedNode.username || selectedNode.id);
+                                setActiveMenu('shortest_path');
+                                showToast(`Đã đặt @${selectedNode.username || selectedNode.id} làm điểm B`);
+                              }}
+                              className="h-7 px-2 bg-white hover:bg-slate-50 border border-[#CBD5E1] rounded-[6px] text-xs font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
+                              title="Đặt làm điểm kết thúc"
+                            >
+                              <RouteIcon className="h-3 w-3 text-[#F97316]" />
+                              <span>Đặt B</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyId(selectedNode.id)}
+                              className="h-7 px-2 bg-white hover:bg-slate-50 border border-[#CBD5E1] rounded-[6px] text-xs font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
+                              title="Sao chép ID thực thể"
+                            >
+                              {copiedId ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3 text-[#64748B]" />}
+                              <span>{copiedId ? 'Đã chép' : 'Chép ID'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* WIDGET: PHÂN BỐ LOẠI QUAN HỆ */}
               <div className="bg-white rounded-[10px] border border-[#E2E8F0] overflow-hidden">
                 <div
                   onClick={() => toggleWidget('relTypes')}
-                  className="p-3 bg-slate-50/70 hover:bg-slate-100/70 border-b border-[#E2E8F0] flex items-center justify-between cursor-pointer transition-colors"
+                  className="p-3 bg-slate-50/70 hover:bg-slate-100 border-b border-[#E2E8F0] flex items-center justify-between cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-1.5">
                     <Share2 className="h-4 w-4 text-[#2563EB]" />
@@ -1950,33 +2680,28 @@ export default function AnalystPage() {
                                 style={{ backgroundColor: item.color, width: progressWidth }}
                               />
                             </div>
-                            <div className="text-xs text-[#64748B]">
-                              {formatNumberVi(item.count)} liên kết
-                            </div>
+                            <div className="text-xs text-[#64748B]">{formatNumberVi(item.count)} liên kết</div>
                           </div>
                         );
                       })}
                     </div>
 
-                    {/* Khung Ý nghĩa phân tích vĩ mô (Sinh động từ dữ liệu thật) */}
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded-[10px] text-xs text-blue-900 space-y-1">
                       <div className="font-semibold flex items-center gap-1.5">
                         <Info className="h-4 w-4 text-[#2563EB]" />
                         <span>Ý nghĩa phân tích vĩ mô</span>
                       </div>
-                      <p className="text-xs text-blue-800 leading-relaxed">
-                        {macroAnalysisText}
-                      </p>
+                      <p className="text-xs text-blue-800 leading-relaxed">{macroAnalysisText}</p>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* WIDGET 2: TOP 5 INFLUENCER */}
+              {/* WIDGET: TOP 5 INFLUENCER */}
               <div className="bg-white rounded-[10px] border border-[#E2E8F0] overflow-hidden">
                 <div
                   onClick={() => toggleWidget('influencers')}
-                  className="p-3 bg-slate-50/70 hover:bg-slate-100/70 border-b border-[#E2E8F0] flex items-center justify-between cursor-pointer transition-colors"
+                  className="p-3 bg-slate-50/70 hover:bg-slate-100 border-b border-[#E2E8F0] flex items-center justify-between cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-1.5">
                     <Award className="h-4 w-4 text-[#F59E0B]" />
@@ -1994,7 +2719,7 @@ export default function AnalystPage() {
                     {kolsList.slice(0, 5).map((kol) => (
                       <div
                         key={kol.id}
-                        onClick={() => handleFocusNode(kol.username)}
+                        onClick={() => handleFocusOrLoadNode(kol.username)}
                         className="p-2 rounded-lg border border-[#E2E8F0] bg-white hover:bg-amber-50/40 cursor-pointer flex items-center justify-between transition-colors text-xs"
                       >
                         <div className="flex items-center gap-2 min-w-0">
@@ -2039,11 +2764,11 @@ export default function AnalystPage() {
                 )}
               </div>
 
-              {/* WIDGET 3: CHỦ ĐỀ HOT (TOP 5) */}
+              {/* WIDGET: CHỦ ĐỀ HOT (TOP 5) */}
               <div className="bg-white rounded-[10px] border border-[#E2E8F0] overflow-hidden">
                 <div
                   onClick={() => toggleWidget('hotTopics')}
-                  className="p-3 bg-slate-50/70 hover:bg-slate-100/70 border-b border-[#E2E8F0] flex items-center justify-between cursor-pointer transition-colors"
+                  className="p-3 bg-slate-50/70 hover:bg-slate-100 border-b border-[#E2E8F0] flex items-center justify-between cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-1.5">
                     <Flame className="h-4 w-4 text-[#F97316]" />
@@ -2084,122 +2809,15 @@ export default function AnalystPage() {
                   </div>
                 )}
               </div>
-
-              {/* WIDGET 4: CHI TIẾT THỰC THỂ */}
-              <div className="bg-white rounded-[10px] border border-[#E2E8F0] overflow-hidden">
-                <div
-                  onClick={() => toggleWidget('entityDetail')}
-                  className="p-3 bg-slate-50/70 hover:bg-slate-100/70 border-b border-[#E2E8F0] flex items-center justify-between cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <CircleDot className="h-4 w-4 text-[#10B981]" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[#0F172A]">
-                      CHI TIẾT THỰC THỂ
-                    </span>
-                  </div>
-                  <button type="button" className="text-[#64748B]">
-                    {collapsedWidgets.entityDetail ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                  </button>
-                </div>
-
-                {!collapsedWidgets.entityDetail && (
-                  <div className="p-3">
-                    {!selectedNode ? (
-                      <div className="p-5 bg-[#F8FAFC] border border-dashed border-[#CBD5E1] rounded-[10px] text-center space-y-1.5">
-                        <CircleDot className="h-5 w-5 text-[#94A3B8] mx-auto" />
-                        <div className="text-xs font-medium text-[#475569]">
-                          Chọn một đỉnh trên đồ thị để xem chi tiết
-                        </div>
-                        <p className="text-xs text-[#64748B]">
-                          Nhấp vào bất kỳ người dùng, bài viết hoặc chủ đề để kiểm tra các thuộc tính kết nối.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-9 h-9 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] flex items-center justify-center font-bold text-[#2563EB] text-sm shrink-0">
-                            {selectedNode.username?.charAt(0).toUpperCase() || selectedNode.type?.charAt(0)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-xs text-[#0F172A] truncate">
-                              {selectedNode.fullName || selectedNode.label}
-                            </div>
-                            <div className="text-xs text-[#64748B] truncate">
-                              ID: {selectedNode.id}
-                            </div>
-                          </div>
-                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[#F1F5F9] text-[#475569]">
-                            {selectedNode.type}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1.5 text-xs">
-                          {selectedNode.content && (
-                            <div className="p-2 bg-slate-50 rounded border border-[#E2E8F0] text-xs text-[#334155]">
-                              "{selectedNode.content}"
-                            </div>
-                          )}
-                          {selectedNode.followers !== undefined && (
-                            <div className="flex items-center justify-between py-1 border-b border-[#F1F5F9]">
-                              <span className="text-[#64748B]">Người theo dõi:</span>
-                              <span className="font-semibold text-[#0F172A] tabular-nums">
-                                {formatNumberVi(selectedNode.followers)}
-                              </span>
-                            </div>
-                          )}
-                          {selectedNode.pagerank !== undefined && (
-                            <div className="py-1 border-b border-[#F1F5F9] space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[#64748B]">PageRank:</span>
-                                <span className="font-semibold text-[#2563EB] tabular-nums">
-                                  {formatPctVi(selectedNode.pagerank * 100, 2)}
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-1.5 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => handleExpandNeighborhood(selectedNode.id)}
-                            className="h-7 px-2 bg-[#F8FAFC] hover:bg-slate-100 border border-[#CBD5E1] rounded-[8px] text-xs font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
-                          >
-                            <Sparkles className="h-3 w-3 text-[#2563EB]" />
-                            <span>Mở rộng 1-hop</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (selectedNode.username) {
-                                setPathSource(selectedNode.username);
-                                setActiveMenu('shortest_path');
-                                showToast(`Đã đặt @${selectedNode.username} làm điểm A`);
-                              }
-                            }}
-                            className="h-7 px-2 bg-[#F8FAFC] hover:bg-slate-100 border border-[#CBD5E1] rounded-[8px] text-xs font-medium text-[#334155] flex items-center justify-center gap-1 transition-colors"
-                          >
-                            <RouteIcon className="h-3 w-3 text-[#F97316]" />
-                            <span>Đặt điểm A</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           </aside>
         )}
       </div>
 
-      {/* Responsive Mobile Drawer cho Cột Trái */}
+      {/* Drawer Mobile */}
       {isMobileLeftOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
-          <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs"
-            onClick={() => setIsMobileLeftOpen(false)}
-          />
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs" onClick={() => setIsMobileLeftOpen(false)} />
           <div className="relative w-72 bg-white h-full shadow-2xl flex flex-col p-4 z-10 animate-in slide-in-from-left duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
               <span className="font-semibold text-sm text-[#0F172A]">Menu Phân tích</span>

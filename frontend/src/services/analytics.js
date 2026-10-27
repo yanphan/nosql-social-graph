@@ -212,14 +212,15 @@ export const analyticsApi = {
     };
   },
 
-  // 2. Lấy đồ thị con (UC-04, UC-13, UC-14)
-  getSubgraph: async ({ center = '', limit = 120 } = {}) => {
+  // 2. Lấy đồ thị con (Khám phá cấu trúc, KOLs, Cộng đồng)
+  getSubgraph: async ({ center = '', hops = 1, limit = 120, nodeTypes, relTypes, from, to } = {}) => {
     try {
       await ensureAnalystAuth();
-      const res = await api.get('/graph/subgraph', { params: { center, limit } });
+      const res = await api.get('/graph/subgraph', {
+        params: { center, hops, limit, nodeTypes, relTypes, from, to },
+      });
       if (res.data?.ok && res.data?.data) {
         const raw = res.data.data;
-        // Map raw nodes and edges into cytoscape format if needed
         const rawNodes = raw.nodes || [];
         const rawEdges = raw.edges || [];
 
@@ -228,37 +229,63 @@ export const analyticsApi = {
             '#2563EB', '#F97316', '#10B981', '#8B5CF6',
             '#EF4444', '#EAB308', '#EC4899', '#64748B'
           ];
+
+          // Compute degrees
+          const degreeMap = new Map();
+          const inDegreeMap = new Map();
+          const outDegreeMap = new Map();
+
+          for (const e of rawEdges) {
+            const s = String(e.source || e.startNode || e.s || '');
+            const t = String(e.target || e.endNode || e.t || '');
+            if (s && t) {
+              outDegreeMap.set(s, (outDegreeMap.get(s) || 0) + 1);
+              inDegreeMap.set(t, (inDegreeMap.get(t) || 0) + 1);
+              degreeMap.set(s, (degreeMap.get(s) || 0) + 1);
+              degreeMap.set(t, (degreeMap.get(t) || 0) + 1);
+            }
+          }
+
           const nodes = rawNodes.map((n, idx) => {
             const props = n.props || n.properties || n;
             const type = n.label || n.labels?.[0] || props.type || (props.username ? 'User' : props.name ? 'Topic' : 'Post');
-            const community = (idx % 8) + 1;
-            const pagerank = +(props.pagerank || (type === 'User' ? (idx < 5 ? 0.35 - idx * 0.05 : 0.04 + (idx % 7) * 0.015) : 0.05)).toFixed(4);
+            const id = String(n.id || props.id || `node_${idx}`);
+            const communityRaw = Number(props.community ?? ((idx % 8) + 1));
+            const community = ((communityRaw % 8) + 8) % 8 + 1; // Always 1..8
+            const pagerank = Number(props.pagerank || (type === 'User' ? (idx < 5 ? 0.35 - idx * 0.05 : 0.04 + (idx % 7) * 0.015) : 0.05));
 
             let label = '';
             if (type === 'User') {
-              label = `@${props.username || props.fullName || props.id || n.id}`;
+              label = `@${props.username || props.fullName || id}`;
             } else if (type === 'Topic') {
-              label = `#${props.name || props.id || n.id}`;
+              label = `#${props.name || id}`;
             } else {
-              label = props.content ? (props.content.length > 22 ? props.content.slice(0, 22) + '…' : props.content) : `Bài #${props.id || n.id}`;
+              label = props.content ? (props.content.length > 20 ? props.content.slice(0, 20) + '…' : props.content) : `Bài #${id}`;
             }
 
-            const isKOL = type === 'User' && (props.followers > 500 || ['admin', 'alice', 'analyst'].includes(props.username) || idx < 4);
+            const inDeg = inDegreeMap.get(id) || 0;
+            const outDeg = outDegreeMap.get(id) || 0;
+            const deg = degreeMap.get(id) || (inDeg + outDeg);
+
+            const isKOL = type === 'User' && (props.isKOL || props.followers > 500 || ['admin', 'alice', 'analyst'].includes(props.username) || idx < 5 || pagerank >= 0.15);
 
             return {
               data: {
-                id: n.id || props.id || `node_${idx}`,
+                id,
                 label,
                 type,
-                username: props.username,
-                fullName: props.fullName,
-                name: props.name,
-                content: props.content,
+                username: props.username || '',
+                fullName: props.fullName || '',
+                name: props.name || '',
+                content: props.content || '',
                 community,
                 communityColor: communityColors[(community - 1) % communityColors.length],
-                pagerank,
-                followers: props.followersCount || props.followers || Math.floor(pagerank * 1000) + 10,
-                postsCount: props.postsCount || Math.floor(pagerank * 25) + 1,
+                pagerank: +pagerank.toFixed(4),
+                followers: Number(props.followersCount || props.followers || (deg * 12 + 10)),
+                posts: Number(props.postsCount || props.posts || (type === 'User' ? Math.floor(pagerank * 25) + 1 : 0)),
+                degree: deg,
+                inDegree: inDeg,
+                outDegree: outDeg,
                 isKOL,
               }
             };
@@ -266,24 +293,28 @@ export const analyticsApi = {
 
           const edges = rawEdges.map((e, idx) => {
             const relType = e.type || e.relationship || 'FOLLOWS';
+            const s = String(e.source || e.startNode || e.s);
+            const t = String(e.target || e.endNode || e.t);
             return {
               data: {
                 id: e.id || `edge_${idx}`,
-                source: e.source || e.startNode || e.s,
-                target: e.target || e.endNode || e.t,
+                source: s,
+                target: t,
                 label: relType,
                 type: relType,
               }
             };
           });
 
-          return { nodes, edges };
+          return { nodes, edges, isOffline: false };
         }
       }
     } catch (err) {
       console.warn('API /graph/subgraph error, fallback mock:', err.message);
     }
-    return generateMockSubgraph(limit);
+
+    const fallback = generateMockSubgraph(limit);
+    return { ...fallback, isOffline: true };
   },
 
   // 3. Phân tích KOLs & PageRank (UC-13)

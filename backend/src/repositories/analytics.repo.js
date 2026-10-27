@@ -186,6 +186,65 @@ export async function neighborhood(id, limit = 100) {
   return rowsToGraph(rows);
 }
 
+export async function getSubgraphUnified({ center = '', hops = 1, limit = 120 } = {}) {
+  const l = Math.max(10, Math.min(300, Number(limit) || 120));
+  const h = Number(hops) === 2 ? 2 : 1;
+
+  if (center && center.trim()) {
+    const rawCenter = center.trim();
+    const cleanCenter = rawCenter.replace(/^[@#]/, '');
+    try {
+      if (h === 2) {
+        const q2 = `
+          MATCH (u) WHERE u.id = $rawCenter OR u.id = $cleanCenter OR u.username = $cleanCenter OR u.name = $cleanCenter
+          MATCH (u)-[r1]-(b)
+          WITH u, r1, b LIMIT ${Math.round(l * 0.4)}
+          OPTIONAL MATCH (b)-[r2]-(c)
+          WHERE c <> u
+          WITH u, r1, b, r2, c LIMIT ${l}
+          UNWIND [
+            { a: u, r: r1, b: b },
+            CASE WHEN r2 IS NOT NULL THEN { a: b, r: r2, b: c } ELSE NULL END
+          ] AS pair
+          WHERE pair IS NOT NULL
+          RETURN pair.a AS a, pair.r AS r, pair.b AS b
+        `;
+        const rows = await read(q2, { rawCenter, cleanCenter });
+        if (rows && rows.length > 0) return rowsToGraph(rows);
+      }
+
+      const q1 = `
+        MATCH (u) WHERE u.id = $rawCenter OR u.id = $cleanCenter OR u.username = $cleanCenter OR u.name = $cleanCenter
+        MATCH (u)-[r]-(b)
+        RETURN u AS a, r, b LIMIT ${l}
+      `;
+      const rows = await read(q1, { rawCenter, cleanCenter });
+      if (rows && rows.length > 0) return rowsToGraph(rows);
+    } catch (err) {
+      console.warn('Neighborhood query error:', err.message);
+    }
+    return { nodes: [], edges: [] };
+  }
+
+  // Khi không có center: chọn seed là top 5 User theo bậc kết nối/PageRank rồi mở rộng 1 hop quanh seed
+  try {
+    const qSeed = `
+      MATCH (u:User)<-[:FOLLOWS]-(f:User)
+      WITH u, count(f) AS followers ORDER BY followers DESC LIMIT 5
+      MATCH (u)-[r]-(b)
+      RETURN u AS a, r, b LIMIT ${l}
+    `;
+    const rows = await read(qSeed);
+    if (rows && rows.length > 0) {
+      return rowsToGraph(rows);
+    }
+  } catch (err) {
+    console.warn('Top 5 seed query error:', err.message);
+  }
+
+  return overview(l);
+}
+
 export async function overview(limit = 100) {
   const l = Math.max(20, Math.min(300, Number(limit) || 100));
   const followsLimit = Math.max(10, Math.round(l * 0.35));
