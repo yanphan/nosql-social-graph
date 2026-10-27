@@ -114,7 +114,6 @@ export default function AdminPage() {
     description: '',
   });
 
-  const [seedingScale, setSeedingScale] = useState('S');
 
   // Load initial data
   useEffect(() => {
@@ -244,12 +243,12 @@ export default function AdminPage() {
 
   // System Actions
   const handleSeed = async () => {
-    if (!confirm(`Tạo dữ liệu mẫu quy mô (${seedingScale}) vào hệ thống?`)) return;
+    if (!confirm('Khởi tạo lại bộ dữ liệu đồ thị mẫu chuẩn (100 người dùng, 300 bài viết, 15 chủ đề)?')) return;
     setLoading(true);
     try {
-      await adminApi.seedGraph(seedingScale);
-      showToast(`Đã bắt đầu khởi tạo dữ liệu (${seedingScale})`);
-      setTimeout(loadAllData, 1500);
+      await adminApi.seedGraph();
+      showToast('Khởi tạo dữ liệu đồ thị mẫu thành công!');
+      setTimeout(loadAllData, 1000);
     } catch (e) {
       showToast('Lỗi khởi tạo dữ liệu', 'error');
     } finally {
@@ -1175,29 +1174,12 @@ export default function AdminPage() {
                     </label>
                   </div>
 
-                  {/* Sinh dữ liệu mẫu: Display text Nhỏ / Vừa / Lớn */}
+                  {/* Sinh dữ liệu mẫu chuẩn (100 Users, 300 Posts, 15 Topics) */}
                   <div className="p-4 bg-[#EFF4FF] border border-[#2563EB]/20 rounded-[12px] space-y-2.5">
                     <div className="font-semibold text-[13px] text-[#2563EB]">Sinh dữ liệu mẫu</div>
-                    <div className="flex gap-1.5">
-                      {[
-                        { scale: 'S', label: 'Nhỏ' },
-                        { scale: 'M', label: 'Vừa' },
-                        { scale: 'L', label: 'Lớn' }
-                      ].map((item) => (
-                        <button
-                          key={item.scale}
-                          type="button"
-                          onClick={() => setSeedingScale(item.scale)}
-                          className={`flex-1 h-7 rounded-[8px] text-[11px] font-medium transition-all btn-press ${
-                            seedingScale === item.scale
-                              ? 'bg-[#2563EB] text-white shadow-2xs'
-                              : 'bg-white text-[#475569] border border-[#E5E9F0]'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
+                    <p className="text-[12px] text-[#475569] leading-relaxed">
+                      100 người dùng, 300 bài viết, 15 chủ đề và ~1.200 kết nối
+                    </p>
                     {/* The single solid-accent button for this area */}
                     <button
                       type="button"

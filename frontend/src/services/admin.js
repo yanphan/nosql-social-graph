@@ -188,14 +188,14 @@ export const adminApi = {
   },
 
   // 5. Hệ thống: Nhập / Xuất dữ liệu & Seeding (UC-15)
-  seedGraph: async (scale = 'S') => {
+  seedGraph: async () => {
     try {
-      const res = await api.post('/admin/seed', { scale });
+      const res = await api.post('/admin/seed', {});
       if (res.data?.ok) return res.data.data;
     } catch (err) {
       console.warn('API seed error:', err.message);
     }
-    return { ok: true, scale, message: `Đã kích hoạt sinh dữ liệu mẫu quy mô ${scale}` };
+    return { ok: true, message: 'Đã kích hoạt sinh dữ liệu mẫu chuẩn thành công' };
   },
 
   exportData: (format = 'json', label = 'all') => {

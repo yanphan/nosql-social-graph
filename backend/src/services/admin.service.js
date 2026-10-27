@@ -5,6 +5,7 @@ import * as importer from '../../../database/lib/importer.js';
 import * as exporter from '../../../database/lib/exporter.js';
 import * as backup from '../../../database/lib/backup.js';
 import * as integrity from '../../../database/lib/integrity.js';
+import { loadScale } from '../../../database/seed/load.js';
 import { read } from '../db/graph.js';
 import { admin as adminQueries } from '../queries/index.js';
 import { Invalid, NotFound } from '../utils/errors.js';
@@ -83,21 +84,19 @@ export async function exportData({ format = 'csv', label = 'User' } = {}) {
   }
 }
 
-export async function seedGraph({ scale = 'S' } = {}) {
-  const t0 = performance.now();
+export async function seedGraph() {
+  const report = await loadScale('DEFAULT', false);
 
-  // Đếm trước
   const [nodesRow, edgesRow] = await Promise.all([
     read(adminQueries.countAllNodes),
     read(adminQueries.countAllEdges),
   ]);
 
-  const ms = Math.round(performance.now() - t0);
   return {
     nodes: Number(nodesRow[0]?.c ?? 0),
     edges: Number(edgesRow[0]?.c ?? 0),
-    ms,
-    scale,
+    ms: report.totalTimeMs,
+    allIntegrityPassed: report.allIntegrityPassed,
   };
 }
 

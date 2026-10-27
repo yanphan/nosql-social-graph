@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
-import { SCALES, DEMO_ACCOUNTS, DEMO_PASSWORD } from './config.js';
+import { SEED_CONFIG, SCALES, DEMO_ACCOUNTS, DEMO_PASSWORD } from './config.js';
 
 // Predefined realistic topics
 const BASE_TOPICS = [
@@ -14,13 +14,13 @@ const BASE_TOPICS = [
 ];
 
 /**
- * Generate synthetic graph data according to scale
+ * Generate synthetic graph data
  */
-export async function generateGraphData(scaleKey = 'S') {
-  const cfg = SCALES[scaleKey] || SCALES.S;
+export async function generateGraphData(scaleKey = 'DEFAULT') {
+  const cfg = (typeof scaleKey === 'object' ? scaleKey : SCALES[scaleKey]) || SEED_CONFIG;
   faker.seed(cfg.seed);
 
-  console.log(`[Generate] Generating Scale ${scaleKey}: ${cfg.users} users, ${cfg.posts} posts, ${cfg.topics} topics...`);
+  console.log(`[Generate] Generating Graph Data: ${cfg.users} users, ${cfg.posts} posts, ${cfg.topics} topics...`);
 
   // 1. Hash password once for all generated users
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);

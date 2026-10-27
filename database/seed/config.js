@@ -1,11 +1,23 @@
-export const SCALES = {
-  S:  { users: 1_000,     posts: 5_000,     topics: 50,  avgFollow: 15, likesPerPost: 6, seed: 42 },
-  M:  { users: 10_000,    posts: 50_000,    topics: 100, avgFollow: 20, likesPerPost: 6, seed: 42 },
-  L:  { users: 100_000,   posts: 500_000,   topics: 200, avgFollow: 20, likesPerPost: 5, seed: 42 },
-  XL: { users: 1_000_000, posts: 5_000_000, topics: 500, avgFollow: 15, likesPerPost: 3, seed: 42 },
+// Cấu hình sinh dữ liệu mẫu chuẩn (tối ưu cho demo đồ thị, phản hồi < 2s)
+export const SEED_CONFIG = {
+  users: 100,        // 100 người dùng (3 demo + 97 tự động)
+  posts: 300,        // 300 bài viết
+  topics: 15,        // 15 chủ đề công nghệ thực tế
+  avgFollow: 12,     // trung bình ~12 lượt theo dõi / user
+  likesPerPost: 5,   // trung bình ~5 like / post
+  seed: 42,          // seed cố định để tái lập 100%
 };
 
-export const BATCH = 2000;
+// Giữ SCALES để tương thích ngược với các script/test cũ
+export const SCALES = {
+  DEFAULT: SEED_CONFIG,
+  S: SEED_CONFIG,
+  M: SEED_CONFIG,
+  L: SEED_CONFIG,
+  XL: SEED_CONFIG,
+};
+
+export const BATCH = 500;
 
 export const DEMO_ACCOUNTS = [
   { username: 'admin',   role: 'admin',   fullName: 'Quản trị viên', email: 'admin@social.local' },
