@@ -8,7 +8,7 @@ export async function ensureAnalystAuth() {
   try {
     user = JSON.parse(userStr);
   } catch {}
-  if (!user || (user.role !== 'admin' && user.role !== 'analyst') || !localStorage.getItem(TOKEN_KEY)) {
+  if (!user || user.role !== 'analyst' || !localStorage.getItem(TOKEN_KEY)) {
     await authService.ensureSession('analyst');
   }
 }

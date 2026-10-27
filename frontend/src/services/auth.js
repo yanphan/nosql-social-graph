@@ -17,8 +17,8 @@ export const authService = {
           // chuyển đổi sang admin
           return await authService.login({ username: 'admin', password: DEMO_PASSWORD });
         }
-        // Nếu trang yêu cầu analyst nhưng user hiện tại không phải analyst hoặc admin
-        if (preferredRole === 'analyst' && u.role !== 'analyst' && u.role !== 'admin') {
+        // Nếu trang yêu cầu analyst nhưng user hiện tại không phải analyst
+        if (preferredRole === 'analyst' && u.role !== 'analyst') {
           return await authService.login({ username: 'analyst', password: DEMO_PASSWORD });
         }
         // Kiểm tra token còn sống không
