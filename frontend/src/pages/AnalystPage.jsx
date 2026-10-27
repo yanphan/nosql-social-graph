@@ -786,6 +786,52 @@ export default function AnalystPage() {
     }));
   }, [trendingTopics]);
 
+  // Chuẩn hóa phân phối bậc đồ thị (Power Law / Scale-Free)
+  const processedDegreeBuckets = useMemo(() => {
+    const raw = stats?.degreeBuckets;
+    if (!raw || !Array.isArray(raw) || raw.length === 0) {
+      return [
+        { bucket: '1 - 5', count: 4800 },
+        { bucket: '6 - 15', count: 2600 },
+        { bucket: '16 - 30', count: 1400 },
+        { bucket: '31 - 60', count: 750 },
+        { bucket: '61 - 120', count: 320 },
+        { bucket: '> 120', count: 80 },
+      ];
+    }
+
+    // Nếu dữ liệu đã có sẵn cấu trúc { bucket, count }
+    if (raw[0].bucket !== undefined) {
+      return raw.map((b) => ({
+        bucket: b.bucket,
+        count: Number(b.count ?? b.users ?? 0),
+      }));
+    }
+
+    // Nhóm 100+ bậc chi tiết { degree, users } từ FalkorDB thành các khoảng bậc thống kê
+    const standardRanges = [
+      { bucket: '0', min: 0, max: 0, count: 0 },
+      { bucket: '1 - 5', min: 1, max: 5, count: 0 },
+      { bucket: '6 - 15', min: 6, max: 15, count: 0 },
+      { bucket: '16 - 30', min: 16, max: 30, count: 0 },
+      { bucket: '31 - 60', min: 31, max: 60, count: 0 },
+      { bucket: '61 - 120', min: 61, max: 120, count: 0 },
+      { bucket: '> 120', min: 121, max: Infinity, count: 0 },
+    ];
+
+    for (const item of raw) {
+      const deg = Number(item.degree ?? 0);
+      const count = Number(item.users ?? item.count ?? 0);
+      const target = standardRanges.find((r) => deg >= r.min && deg <= r.max);
+      if (target) {
+        target.count += count;
+      }
+    }
+
+    const filtered = standardRanges.filter((r) => r.count > 0 || (r.min >= 1 && r.max <= 60));
+    return filtered.length > 0 ? filtered : standardRanges;
+  }, [stats?.degreeBuckets]);
+
   // Phân tích ma trận quan hệ động
   const maxRelCount = useMemo(() => Math.max(...ALL_REL_TYPES.map((r) => r.count)), []);
 
@@ -1513,18 +1559,20 @@ export default function AnalystPage() {
                 <div className="h-56 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
-                      data={stats?.degreeBuckets || [
-                        { bucket: '1-5', count: 4800 },
-                        { bucket: '6-15', count: 2600 },
-                        { bucket: '16-30', count: 1400 },
-                        { bucket: '31-60', count: 750 },
-                        { bucket: '61-120', count: 320 },
-                        { bucket: '>120', count: 80 },
-                      ]}
-                      margin={{ top: 10, right: 15, left: 10, bottom: 10 }}
+                      data={processedDegreeBuckets}
+                      margin={{ top: 15, right: 15, left: 10, bottom: 20 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis dataKey="bucket" tick={{ fontSize: 12, fill: '#64748B' }} />
+                      <XAxis
+                        dataKey="bucket"
+                        tick={{ fontSize: 12, fill: '#64748B' }}
+                        label={{
+                          value: 'Bậc liên kết (Số cạnh / người dùng)',
+                          position: 'insideBottom',
+                          offset: -12,
+                          style: { fill: '#64748B', fontSize: 11, textAnchor: 'middle' },
+                        }}
+                      />
                       <YAxis
                         tick={{ fontSize: 11, fill: '#64748B' }}
                         tickFormatter={(val) => formatNumberVi(val)}
@@ -1537,17 +1585,24 @@ export default function AnalystPage() {
                         }}
                       />
                       <RechartsTooltip
-                        formatter={(val) => [formatNumberVi(val), 'Số đỉnh']}
-                        labelFormatter={(label) => `Bậc: ${label}`}
+                        formatter={(val) => [formatNumberVi(val) + ' đỉnh', 'Số lượng']}
+                        labelFormatter={(label) => `Khoảng bậc: ${label} liên kết`}
                         contentStyle={{
                           backgroundColor: '#0F172A',
                           borderRadius: '8px',
                           border: 'none',
                           color: '#FFFFFF',
                           fontSize: '12px',
+                          padding: '8px 12px',
                         }}
                       />
-                      <Bar dataKey="count" name="Số lượng Đỉnh" fill="#2563EB" radius={[4, 4, 0, 0]} />
+                      <Bar
+                        dataKey="count"
+                        name="Số lượng Đỉnh"
+                        fill="#2563EB"
+                        radius={[4, 4, 0, 0]}
+                        maxBarSize={48}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
