@@ -89,25 +89,19 @@ export const adminApi = {
 
   createUser: async (userData) => {
     try {
+      await ensureAdminAuth();
       const res = await api.post('/users', userData);
       if (res.data?.ok) return res.data.data;
+      throw new Error('Không thể tạo người dùng');
     } catch (err) {
-      console.warn('API create user error, fallback mock:', err.message);
+      const errMsg = err.response?.data?.error?.message || err.message || 'Lỗi khi tạo người dùng';
+      throw new Error(errMsg);
     }
-    const newUser = {
-      id: `usr_${userData.username}`,
-      ...userData,
-      status: 'active',
-      joinedAt: Date.now(),
-      followers: 0,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.username}&backgroundColor=b6e3f4`,
-    };
-    mockUsers.unshift(newUser);
-    return newUser;
   },
 
   setUserStatus: async (userId, status) => {
     try {
+      await ensureAdminAuth();
       const res = await api.patch(`/users/${userId}/status`, { status });
       if (res.data?.ok) return res.data.data;
     } catch (err) {
@@ -116,6 +110,33 @@ export const adminApi = {
     const u = mockUsers.find((x) => x.id === userId);
     if (u) u.status = status;
     return { id: userId, status };
+  },
+
+  deleteUser: async (userId) => {
+    try {
+      await ensureAdminAuth();
+      const res = await api.delete(`/users/${userId}`);
+      if (res.data?.ok) return res.data.data;
+    } catch (err) {
+      console.warn('API delete user error, fallback mock:', err.message);
+    }
+    const idx = mockUsers.findIndex((u) => u.id === userId);
+    if (idx !== -1) mockUsers.splice(idx, 1);
+    return true;
+  },
+
+  updateUser: async (userId, data) => {
+    try {
+      await ensureAdminAuth();
+      const res = await api.put(`/users/${userId}`, data);
+      if (res.data?.ok) return res.data.data;
+    } catch (err) {
+      const errMsg = err.response?.data?.error?.message || err.message;
+      throw new Error(errMsg);
+    }
+    const u = mockUsers.find((x) => x.id === userId);
+    if (u) Object.assign(u, data);
+    return u;
   },
 
   // 3. Quản lý Chủ đề (UC-07)
