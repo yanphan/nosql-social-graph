@@ -26,15 +26,16 @@ export default function LoginPage() {
     remember: true,
   });
 
-  const executeLogin = async (username, password) => {
+  const handleLogin = async (e) => {
+    e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (!username?.trim()) {
+    if (!form.username.trim()) {
       setErrorMsg('Vui lòng nhập tên đăng nhập');
       return;
     }
-    if (!password) {
+    if (!form.password) {
       setErrorMsg('Vui lòng nhập mật khẩu');
       return;
     }
@@ -42,26 +43,21 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await authService.login({
-        username: username.trim(),
-        password,
+        username: form.username,
+        password: form.password,
       });
 
       if (res.success) {
         setSuccessMsg(`Chào mừng trở lại, ${res.user.fullName}!`);
         setTimeout(() => {
           navigate('/');
-        }, 350);
+        }, 500);
       }
     } catch (err) {
       setErrorMsg(err.message || 'Đăng nhập không thành công');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    executeLogin(form.username, form.password);
   };
 
   return (
@@ -178,29 +174,6 @@ export default function LoginPage() {
                   </>
                 )}
               </button>
-
-              {/* Đăng nhập nhanh tài khoản mẫu */}
-              <div className="pt-3 border-t border-slate-100 space-y-2">
-                <div className="text-[11px] font-semibold text-slate-400 text-center uppercase tracking-wider">
-                  Tài khoản mẫu (Mật khẩu: Passw0rd!)
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => executeLogin('admin', 'Passw0rd!')}
-                    className="py-2 px-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold border border-slate-200 transition-colors"
-                  >
-                    👑 Quản trị (admin)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => executeLogin('alice', 'Passw0rd!')}
-                    className="py-2 px-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold border border-slate-200 transition-colors"
-                  >
-                    👤 Người dùng (alice)
-                  </button>
-                </div>
-              </div>
             </form>
           </div>
         </div>
