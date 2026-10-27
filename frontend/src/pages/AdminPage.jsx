@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import {
@@ -570,6 +570,44 @@ export default function AdminPage() {
   const [topicsList, setTopicsList] = useState([]);
   const [postsList, setPostsList] = useState([]);
   const [backupsList, setBackupsList] = useState([]);
+
+  // Dữ liệu phân bố bậc nhóm lại theo khoảng để cột và số không bị đè lên nhau
+  const processedDegreeBuckets = useMemo(() => {
+    const raw = stats?.degreeBuckets;
+    if (!raw || !Array.isArray(raw) || raw.length === 0) {
+      return [];
+    }
+
+    // Nếu đã là dạng bucket khoảng
+    if (raw[0].bucket !== undefined) {
+      return raw.map((b) => ({
+        bucket: b.bucket,
+        users: Number(b.users ?? b.count ?? 0),
+      }));
+    }
+
+    // Nhóm thành các khoảng chuẩn log/power-law
+    const standardRanges = [
+      { bucket: '0', min: 0, max: 0, users: 0 },
+      { bucket: '1 - 5', min: 1, max: 5, users: 0 },
+      { bucket: '6 - 15', min: 6, max: 15, users: 0 },
+      { bucket: '16 - 30', min: 16, max: 30, users: 0 },
+      { bucket: '31 - 60', min: 31, max: 60, users: 0 },
+      { bucket: '61 - 120', min: 61, max: 120, users: 0 },
+      { bucket: '> 120', min: 121, max: Infinity, users: 0 },
+    ];
+
+    for (const item of raw) {
+      const deg = Number(item.degree ?? 0);
+      const count = Number(item.users ?? item.count ?? 0);
+      const target = standardRanges.find((r) => deg >= r.min && deg <= r.max);
+      if (target) {
+        target.users += count;
+      }
+    }
+
+    return standardRanges.filter((r) => r.users > 0 || r.bucket !== '0');
+  }, [stats?.degreeBuckets]);
 
   // Modals state
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -1199,23 +1237,23 @@ export default function AdminPage() {
                     <div className="h-full flex items-center justify-center text-xs text-[#64748B]">
                       <RefreshCw className="h-5 w-5 animate-spin text-[#2563EB] mb-2" />
                     </div>
-                  ) : (stats?.degreeBuckets?.length ?? 0) === 0 ? (
+                  ) : processedDegreeBuckets.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-xs text-[#64748B]">
                       Chưa có dữ liệu phân bố kết nối
                     </div>
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
-                        data={stats?.degreeBuckets || []}
-                        margin={{ top: 16, right: 16, left: 0, bottom: 6 }}
+                        data={processedDegreeBuckets}
+                        margin={{ top: 20, right: 16, left: 0, bottom: 6 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#E5E9F0" vertical={false} />
                         <XAxis
-                          dataKey="degree"
+                          dataKey="bucket"
                           tick={{ fontSize: 12, fill: '#475569' }}
                           tickLine={false}
                           axisLine={false}
-                          label={{ value: 'Số kết nối', position: 'insideBottom', offset: -4, fontSize: 12, fill: '#64748B' }}
+                          label={{ value: 'Khoảng số kết nối (bậc)', position: 'insideBottom', offset: -4, fontSize: 12, fill: '#64748B' }}
                           height={32}
                         />
                         <YAxis
@@ -1231,7 +1269,7 @@ export default function AdminPage() {
                               const data = payload[0].payload;
                               return (
                                 <div className="bg-[#0F172A] text-white px-3 py-1.5 rounded-[8px] text-xs tabular-nums shadow-md">
-                                  {data.degree} kết nối: {data.users} người dùng
+                                  {data.bucket} kết nối: {data.users.toLocaleString('vi-VN')} người dùng
                                 </div>
                               );
                             }
@@ -1247,7 +1285,7 @@ export default function AdminPage() {
                           onMouseEnter={(_, index) => setActiveBarIndex(index)}
                           onMouseLeave={() => setActiveBarIndex(null)}
                         >
-                          {(stats?.degreeBuckets || []).map((entry, index) => (
+                          {processedDegreeBuckets.map((entry, index) => (
                             <Cell
                               key={`bar-${index}`}
                               fill="#2563EB"
@@ -1255,7 +1293,14 @@ export default function AdminPage() {
                               className="transition-opacity duration-150 cursor-pointer"
                             />
                           ))}
-                          <LabelList dataKey="users" position="top" fill="#475569" fontSize={12} offset={6} />
+                          <LabelList
+                            dataKey="users"
+                            position="top"
+                            fill="#475569"
+                            fontSize={12}
+                            offset={6}
+                            formatter={(val) => val.toLocaleString('vi-VN')}
+                          />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
