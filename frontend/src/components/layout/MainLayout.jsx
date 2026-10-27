@@ -8,6 +8,7 @@ import {
 import { authService } from '@/services/auth';
 import { topicsService } from '@/services/topics';
 import { postsService } from '@/services/posts';
+import { recommendService } from '@/services/recommend';
 import PostCard from '@/components/post/PostCard';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -62,7 +63,30 @@ export default function MainLayout() {
 
   // Feed posts state
   const [postsList, setPostsList] = useState([]);
-  const friendSuggestions = mockApi.getFriendSuggestions(currentUser.id);
+  const [friendSuggestions, setFriendSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  // Load real friend suggestions from FalkorDB backend (BT3 - UC-11)
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingSuggestions(true);
+    recommendService.getFriendRecommendations(5)
+      .then((data) => {
+        if (isMounted && data) {
+          setFriendSuggestions(data);
+        }
+      })
+      .catch((err) => {
+        console.error('Lỗi tải gợi ý kết bạn:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingSuggestions(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.id]);
 
   // Load real posts from FalkorDB backend (Chế độ Gợi ý đồ thị hoặc Mới nhất)
   useEffect(() => {
@@ -112,12 +136,28 @@ export default function MainLayout() {
     ? postsList.filter((p) => p.topics?.some((t) => t.name === selectedTopic) || p.topicNames?.includes(selectedTopic))
     : postsList;
 
-  // Toggle follow/like suggestion
-  const toggleFollow = (userId) => {
+  // Toggle follow/like suggestion via real backend API
+  const toggleFollow = async (userId) => {
+    const isCurrentlyFollowed = !!followedUsers[userId];
     setFollowedUsers((prev) => ({
       ...prev,
-      [userId]: !prev[userId],
+      [userId]: !isCurrentlyFollowed,
     }));
+
+    try {
+      if (isCurrentlyFollowed) {
+        await recommendService.unfollowUser(userId);
+      } else {
+        await recommendService.followUser(userId);
+      }
+    } catch (err) {
+      console.error('Lỗi thay đổi trạng thái theo dõi:', err);
+      // Revert on failure
+      setFollowedUsers((prev) => ({
+        ...prev,
+        [userId]: isCurrentlyFollowed,
+      }));
+    }
   };
 
   // Create post handler
@@ -339,47 +379,65 @@ export default function MainLayout() {
               </div>
 
               <div className="space-y-3">
-                {friendSuggestions.map((user) => {
-                  const isFollowed = followedUsers[user.id] ?? false;
-
-                  return (
-                    <div key={user.id} className="flex items-center justify-between gap-3 group">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <img
-                          src={user.avatar}
-                          alt={user.fullName}
-                          className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <div className="font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] cursor-pointer">
-                            {user.fullName}
-                          </div>
-                          {/* Secondary text: 13px #64748B chuẩn AA */}
-                          <div className="text-[13px] text-[#64748B] truncate tabular-nums">
-                            {user.mutualFriends || 3} bạn chung
-                          </div>
+                {loadingSuggestions ? (
+                  <div className="space-y-2.5">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-2.5 animate-pulse">
+                        <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-3 bg-slate-200 rounded w-24" />
+                          <div className="h-2.5 bg-slate-100 rounded w-16" />
                         </div>
                       </div>
+                    ))}
+                  </div>
+                ) : friendSuggestions.length === 0 ? (
+                  <div className="text-xs text-[#64748B] py-2 text-center">
+                    Chưa có gợi ý mới
+                  </div>
+                ) : (
+                  friendSuggestions.map((user) => {
+                    const isFollowed = followedUsers[user.id] ?? false;
 
-                      {/* Follow Button: UserPlus / UserCheck icon */}
-                      <button
-                        onClick={() => toggleFollow(user.id)}
-                        className={`h-8 w-8 rounded-[10px] flex items-center justify-center transition-all duration-150 btn-press ${
-                          isFollowed
-                            ? 'bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/20'
-                            : 'border border-[#E5E9F0] text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
-                        }`}
-                        title={isFollowed ? 'Đang theo dõi' : 'Theo dõi'}
-                      >
-                        {isFollowed ? (
-                          <UserCheck className="h-4 w-4" />
-                        ) : (
-                          <UserPlus className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
-                  );
-                })}
+                    return (
+                      <div key={user.id} className="flex items-center justify-between gap-3 group">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=b6e3f4`}
+                            alt={user.fullName || user.username}
+                            className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] cursor-pointer">
+                              {user.fullName || user.username}
+                            </div>
+                            {/* Secondary text: 13px #64748B chuẩn AA */}
+                            <div className="text-[12px] text-[#64748B] truncate tabular-nums" title={user.reason}>
+                              {user.reason || (user.mutual ? `${user.mutual} bạn chung` : `${user.followers || 0} người theo dõi`)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Follow Button: UserPlus / UserCheck icon */}
+                        <button
+                          onClick={() => toggleFollow(user.id)}
+                          className={`h-8 w-8 rounded-[10px] flex items-center justify-center transition-all duration-150 btn-press ${
+                            isFollowed
+                              ? 'bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/20'
+                              : 'border border-[#E5E9F0] text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
+                          }`}
+                          title={isFollowed ? 'Đang theo dõi' : 'Theo dõi'}
+                        >
+                          {isFollowed ? (
+                            <UserCheck className="h-4 w-4" />
+                          ) : (
+                            <UserPlus className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
               {/* Nút Khám phá đồ thị: Tint style với subtitle 12px secondary text */}
