@@ -40,6 +40,7 @@ import {
   Shield,
   TrendingUp,
   Flame,
+  Menu,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
