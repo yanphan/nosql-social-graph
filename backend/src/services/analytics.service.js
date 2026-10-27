@@ -150,12 +150,8 @@ export async function getSpreadTree(postId) {
   };
 }
 
-export async function getSubgraph({ center = '', limit = 100 } = {}) {
-  const l = Math.min(300, Math.max(1, Number(limit) || 100));
-  if (center && center.trim()) {
-    return analyticsRepo.neighborhood(center.trim(), l);
-  }
-  return analyticsRepo.overview(l);
+export async function getSubgraph(params = {}) {
+  return analyticsRepo.getSubgraphUnified(params);
 }
 
 export async function searchGlobal({ q = '', type = 'all', limit = 10 } = {}) {

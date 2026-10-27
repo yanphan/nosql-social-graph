@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import MainLayout from '@/components/layout/MainLayout';
 import LoginPage from '@/pages/LoginPage';
 import AdminPage from '@/pages/AdminPage';
+import AnalystPage from '@/pages/AnalystPage';
 
 function RouteProgressBar() {
   const location = useLocation();
@@ -33,6 +34,8 @@ export default function App() {
         <Route path="/" element={<MainLayout />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/analytics" element={<AnalystPage />} />
+        <Route path="/analyst" element={<AnalystPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

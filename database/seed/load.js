@@ -21,9 +21,9 @@ async function batchLoad(cypher, rows, batchSize = BATCH, label = '') {
   return { count: rows.length, ms };
 }
 
-export async function loadScale(scaleKey = 'S') {
+export async function loadScale(scaleKey = 'DEFAULT', shouldClose = false) {
   console.log(`=======================================================`);
-  console.log(`Starting Data Load for Scale: ${scaleKey}`);
+  console.log(`Starting Data Load (Scale / Config: ${scaleKey})`);
   console.log(`=======================================================`);
   const tStart = performance.now();
 
@@ -85,14 +85,16 @@ export async function loadScale(scaleKey = 'S') {
   console.log(`Saved load report: ${reportPath}`);
   console.log(`=======================================================`);
 
-  await closeDb();
+  if (shouldClose) {
+    await closeDb();
+  }
   return report;
 }
 
 // CLI runner
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const scaleArg = (process.argv[2] || 'S').toUpperCase();
-  loadScale(scaleArg)
+  const scaleArg = (process.argv[2] || 'DEFAULT').toUpperCase();
+  loadScale(scaleArg, true)
     .then((report) => {
       if (!report.allIntegrityPassed) {
         console.error('Data load completed with integrity check violations!');

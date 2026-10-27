@@ -42,6 +42,18 @@ export async function setInterests(uid, items) {
   return items.length;
 }
 
+export async function getUserInterests(uid) {
+  const rows = await read(topics.userInterests, { uid });
+  return rows.map((r) => {
+    const props = toProps(r, 't');
+    return {
+      ...props,
+      score: Number(r.score ?? 0),
+      postCount: Number(r.postCount ?? 0),
+    };
+  });
+}
+
 export async function search(q, limit = 10) {
   const rows = await read(topics.search, { q, limit });
   return rows.map((r) => toProps(r, 't'));

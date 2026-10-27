@@ -125,3 +125,7 @@ export async function setInterests(userId, items) {
   const count = await topicsRepo.setInterests(userId, items);
   return { updated: count };
 }
+
+export async function getUserInterests(userId) {
+  return await topicsRepo.getUserInterests(userId);
+}

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -19,7 +20,13 @@ import {
   X,
   FileText,
   Share2,
-  Network
+  Network,
+  Eye,
+  EyeOff,
+  KeyRound,
+  MoreHorizontal,
+  Edit,
+  Check
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -32,6 +39,12 @@ import {
   CartesianGrid,
   LabelList
 } from 'recharts';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 
 import { adminApi } from '@/services/admin';
 import { authService } from '@/services/auth';
@@ -66,7 +79,465 @@ function CountUp({ value = 0, duration = 600 }) {
     return () => cancelAnimationFrame(frameId);
   }, [value, duration]);
 
-  return <span className="tabular-nums">{displayVal.toLocaleString()}</span>;
+  return <span className="tabular-nums">{displayVal.toLocaleString('vi-VN')}</span>;
+}
+
+// Modal Thêm người dùng hoàn chỉnh với Portal, Trap focus và Validate client-side
+function AddUserModal({ isOpen, onClose, onSuccess, triggerRef }) {
+  const [form, setForm] = useState({
+    username: '',
+    fullName: '',
+    password: '',
+    role: 'user',
+  });
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
+  const [apiError, setApiError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedPass, setCopiedPass] = useState(false);
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+
+  const modalRef = useRef(null);
+  const usernameInputRef = useRef(null);
+  const roleDropdownRef = useRef(null);
+
+  // Khóa cuộn body và tự động focus ô đầu tiên
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      const timer = setTimeout(() => {
+        usernameInputRef.current?.focus();
+      }, 50);
+      return () => {
+        clearTimeout(timer);
+        document.body.style.overflow = '';
+      };
+    } else {
+      document.body.style.overflow = '';
+      setForm({ username: '', fullName: '', password: '', role: 'user' });
+      setErrors({});
+      setTouched({});
+      setApiError('');
+      setShowPassword(false);
+      setCopiedPass(false);
+      setIsRoleDropdownOpen(false);
+    }
+  }, [isOpen]);
+
+  // Trap focus trong modal & bắt phím Escape
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClose();
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        const focusableElements = modalRef.current?.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusableElements || focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
+  // Đóng dropdown vai trò khi click ra ngoài dropdown
+  useEffect(() => {
+    const handleClickOutsideRole = (e) => {
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(e.target)) {
+        setIsRoleDropdownOpen(false);
+      }
+    };
+    if (isRoleDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutsideRole);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutsideRole);
+  }, [isRoleDropdownOpen]);
+
+  const handleClose = () => {
+    onClose();
+    setTimeout(() => {
+      triggerRef?.current?.focus();
+    }, 50);
+  };
+
+  // Hàm validate client-side từng trường
+  const validateField = (name, value) => {
+    switch (name) {
+      case 'username': {
+        const val = value.trim();
+        if (!val) return 'Tên đăng nhập không được để trống';
+        if (val.length < 3 || val.length > 30) return 'Tên đăng nhập từ 3 đến 30 ký tự';
+        if (!/^[a-z0-9_.]+$/.test(val)) return 'Chỉ gồm chữ thường, số, dấu gạch dưới (_) và dấu chấm (.)';
+        return '';
+      }
+      case 'fullName': {
+        if (!value.trim()) return 'Họ và tên không được để trống';
+        return '';
+      }
+      case 'password': {
+        if (!value) return 'Mật khẩu không được để trống';
+        if (value.length < 8) return 'Mật khẩu phải từ 8 ký tự trở lên';
+        if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/[0-9]/.test(value)) {
+          return 'Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường và 1 số';
+        }
+        return '';
+      }
+      default:
+        return '';
+    }
+  };
+
+  const handleChange = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+    setApiError('');
+    if (touched[field]) {
+      const err = validateField(field, value);
+      setErrors((prev) => ({ ...prev, [field]: err }));
+    }
+  };
+
+  const handleBlur = (field) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const err = validateField(field, form[field]);
+    setErrors((prev) => ({ ...prev, [field]: err }));
+  };
+
+  // Đánh giá độ mạnh mật khẩu (Yếu / Trung bình / Mạnh)
+  const getPasswordStrength = (pass) => {
+    if (!pass) return { score: 0, label: '', color: '', text: '' };
+    let score = 0;
+    if (pass.length >= 8) score++;
+    if (pass.length >= 12) score++;
+    if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+
+    if (score <= 2) return { score: 1, label: 'Yếu', color: 'bg-red-500', text: 'text-red-600' };
+    if (score <= 4) return { score: 2, label: 'Trung bình', color: 'bg-amber-500', text: 'text-amber-600' };
+    return { score: 3, label: 'Mạnh', color: 'bg-emerald-500', text: 'text-emerald-600' };
+  };
+
+  const strength = getPasswordStrength(form.password);
+
+  // Tạo mật khẩu ngẫu nhiên mạnh 12 ký tự
+  const handleGenerateRandomPassword = () => {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const numbers = '23456789';
+    const specials = '@#$%!&*';
+    let pass = '';
+    pass += upper[Math.floor(Math.random() * upper.length)];
+    pass += lower[Math.floor(Math.random() * lower.length)];
+    pass += numbers[Math.floor(Math.random() * numbers.length)];
+    pass += specials[Math.floor(Math.random() * specials.length)];
+    const all = upper + lower + numbers + specials;
+    for (let i = 0; i < 8; i++) {
+      pass += all[Math.floor(Math.random() * all.length)];
+    }
+    pass = pass.split('').sort(() => 0.5 - Math.random()).join('');
+
+    setForm((prev) => ({ ...prev, password: pass }));
+    setErrors((prev) => ({ ...prev, password: '' }));
+    setTouched((prev) => ({ ...prev, password: true }));
+    setShowPassword(true);
+
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(pass).catch(() => {});
+      setCopiedPass(true);
+      setTimeout(() => setCopiedPass(false), 3000);
+    }
+  };
+
+  // Kiểm tra tính hợp lệ của toàn bộ form
+  const usernameErr = validateField('username', form.username);
+  const fullNameErr = validateField('fullName', form.fullName);
+  const passwordErr = validateField('password', form.password);
+  const isFormValid = !usernameErr && !fullNameErr && !passwordErr && form.username.trim() && form.fullName.trim() && form.password;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setTouched({ username: true, fullName: true, password: true });
+    if (!isFormValid || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setApiError('');
+    try {
+      const created = await adminApi.createUser({
+        username: form.username.trim(),
+        fullName: form.fullName.trim(),
+        password: form.password,
+        role: form.role,
+      });
+      onSuccess(created);
+      handleClose();
+    } catch (err) {
+      setApiError(err.message || 'Lỗi khi tạo người dùng');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div
+      style={{ backgroundColor: 'rgba(15, 23, 42, 0.5)' }}
+      className="fixed inset-0 z-[999] flex items-center justify-center p-4 backdrop-blur-xs transition-opacity duration-150"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          handleClose();
+        }
+      }}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-user-modal-title"
+        className="bg-white border border-[#E5E9F0] rounded-[16px] p-6 max-w-md w-full max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150"
+      >
+        {/* Header Modal */}
+        <div className="flex items-center justify-between border-b border-[#E5E9F0] pb-3">
+          <h3 id="add-user-modal-title" className="font-semibold text-base text-[#0F172A]">
+            Thêm người dùng
+          </h3>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="text-[#64748B] hover:text-[#0F172A] p-1 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1"
+            aria-label="Đóng hộp thoại"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Thông báo lỗi từ API nếu có */}
+        {apiError && (
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-[10px] flex items-center gap-2">
+            <span className="font-semibold">Lỗi:</span>
+            <span>{apiError}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-[13px]">
+          {/* Ô Tên đăng nhập */}
+          <div>
+            <label className="text-xs font-medium text-[#475569] block mb-1">
+              Tên đăng nhập <span className="text-red-500">*</span>
+            </label>
+            <input
+              ref={usernameInputRef}
+              type="text"
+              value={form.username}
+              onChange={(e) => handleChange('username', e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ''))}
+              onBlur={() => handleBlur('username')}
+              placeholder="vd: john_doe.99"
+              className={`w-full h-9 px-3 bg-white border rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 ${
+                touched.username && errors.username
+                  ? 'border-red-500 focus:border-red-500 focus:ring-red-300'
+                  : 'border-[#E5E9F0] focus:border-[#2563EB]'
+              }`}
+            />
+            {touched.username && errors.username && (
+              <p className="text-xs text-red-600 mt-1">{errors.username}</p>
+            )}
+          </div>
+
+          {/* Ô Họ và tên */}
+          <div>
+            <label className="text-xs font-medium text-[#475569] block mb-1">
+              Họ và tên <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.fullName}
+              onChange={(e) => handleChange('fullName', e.target.value)}
+              onBlur={() => handleBlur('fullName')}
+              placeholder="vd: Nguyễn Văn A"
+              className={`w-full h-9 px-3 bg-white border rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 ${
+                touched.fullName && errors.fullName
+                  ? 'border-red-500 focus:border-red-500 focus:ring-red-300'
+                  : 'border-[#E5E9F0] focus:border-[#2563EB]'
+              }`}
+            />
+            {touched.fullName && errors.fullName && (
+              <p className="text-xs text-red-600 mt-1">{errors.fullName}</p>
+            )}
+          </div>
+
+          {/* Ô Mật khẩu */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-[#475569]">
+                Mật khẩu <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerateRandomPassword}
+                className="text-[11px] text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1 hover:underline focus:outline-none focus:ring-1 focus:ring-[#2563EB] rounded px-1"
+              >
+                <KeyRound className="h-3 w-3" />
+                <span>Tạo ngẫu nhiên</span>
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={(e) => handleChange('password', e.target.value)}
+                onBlur={() => handleBlur('password')}
+                placeholder="Nhập mật khẩu (tối thiểu 8 ký tự)..."
+                className={`w-full h-9 pl-3 pr-10 bg-white border rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 ${
+                  touched.password && errors.password
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-300'
+                    : 'border-[#E5E9F0] focus:border-[#2563EB]'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] p-0.5 rounded focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+
+            {/* Thanh đo độ mạnh mật khẩu */}
+            {form.password && (
+              <div className="mt-1.5 space-y-1">
+                <div className="flex gap-1.5 h-1.5">
+                  <div className={`h-full flex-1 rounded-full ${strength.score >= 1 ? strength.color : 'bg-slate-200'}`} />
+                  <div className={`h-full flex-1 rounded-full ${strength.score >= 2 ? strength.color : 'bg-slate-200'}`} />
+                  <div className={`h-full flex-1 rounded-full ${strength.score >= 3 ? strength.color : 'bg-slate-200'}`} />
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-[#64748B]">
+                    Độ mạnh: <strong className={strength.text}>{strength.label}</strong>
+                  </span>
+                  {copiedPass && (
+                    <span className="text-emerald-600 font-medium animate-fade-in">Đã sao chép vào bộ nhớ tạm!</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {touched.password && errors.password && (
+              <p className="text-xs text-red-600 mt-1">{errors.password}</p>
+            )}
+          </div>
+
+          {/* Dropdown Vai trò tùy biến */}
+          <div className="relative" ref={roleDropdownRef}>
+            <label className="text-xs font-medium text-[#475569] block mb-1">
+              Vai trò
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+              className="w-full h-9 px-3 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 transition-colors"
+            >
+              <span>
+                {form.role === 'admin'
+                  ? 'Quản trị viên'
+                  : form.role === 'analyst'
+                  ? 'Nhà phân tích'
+                  : 'Thành viên'}
+              </span>
+              <ChevronDown className={`h-4 w-4 text-[#64748B] transition-transform ${isRoleDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isRoleDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E5E9F0] rounded-[10px] shadow-lg z-20 py-1 text-xs divide-y divide-[#E5E9F0]/60 animate-in fade-in zoom-in-95 duration-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm((prev) => ({ ...prev, role: 'user' }));
+                    setIsRoleDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 hover:bg-[#F1F5F9] transition-colors flex items-center justify-between ${
+                    form.role === 'user' ? 'text-[#2563EB] font-medium bg-[#EFF4FF]' : 'text-[#0F172A]'
+                  }`}
+                >
+                  <span>Thành viên</span>
+                  {form.role === 'user' && <Check className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm((prev) => ({ ...prev, role: 'analyst' }));
+                    setIsRoleDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 hover:bg-[#F1F5F9] transition-colors flex items-center justify-between ${
+                    form.role === 'analyst' ? 'text-[#2563EB] font-medium bg-[#EFF4FF]' : 'text-[#0F172A]'
+                  }`}
+                >
+                  <span>Nhà phân tích</span>
+                  {form.role === 'analyst' && <Check className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm((prev) => ({ ...prev, role: 'admin' }));
+                    setIsRoleDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 hover:bg-[#F1F5F9] transition-colors flex items-center justify-between ${
+                    form.role === 'admin' ? 'text-[#2563EB] font-medium bg-[#EFF4FF]' : 'text-[#0F172A]'
+                  }`}
+                >
+                  <span>Quản trị viên</span>
+                  {form.role === 'admin' && <Check className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Nút bấm hành động */}
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E9F0]">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="h-9 px-4 rounded-[10px] border border-[#CBD5E1] bg-white text-[#334155] hover:bg-[#F8FAFC] font-medium text-xs transition-colors btn-press focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              disabled={!isFormValid || isSubmitting}
+              className="h-9 px-4 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium text-xs flex items-center gap-1.5 transition-colors btn-press shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1"
+            >
+              {isSubmitting && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              <span>{isSubmitting ? 'Đang tạo...' : 'Tạo tài khoản'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 export default function AdminPage() {
@@ -94,27 +565,21 @@ export default function AdminPage() {
   // Data States
   const [stats, setStats] = useState(null);
   const [usersList, setUsersList] = useState([]);
+  const [userPage, setUserPage] = useState(1);
+  const [userHasMore, setUserHasMore] = useState(false);
   const [topicsList, setTopicsList] = useState([]);
   const [postsList, setPostsList] = useState([]);
   const [backupsList, setBackupsList] = useState([]);
 
   // Modals state
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [newUserForm, setNewUserForm] = useState({
-    username: '',
-    fullName: '',
-    password: 'password123',
-    email: '',
-    role: 'user',
-  });
+  const addUserTriggerRef = useRef(null);
 
   const [isAddTopicOpen, setIsAddTopicOpen] = useState(false);
   const [newTopicForm, setNewTopicForm] = useState({
     name: '',
     description: '',
   });
-
-  const [seedingScale, setSeedingScale] = useState('S');
 
   // Load initial data
   useEffect(() => {
@@ -126,23 +591,40 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadAllData = async () => {
+  const loadAllData = async (targetPage = userPage) => {
     setLoading(true);
     try {
+      await adminApi.ensureAdminAuth();
       const [sData, uData, tData, pData, bData] = await Promise.all([
         adminApi.getStats(),
-        adminApi.getUsers({ limit: 50 }),
+        adminApi.getUsers({ page: targetPage, limit: 10 }),
         adminApi.getTopics(),
         adminApi.getPosts({ limit: 50 }),
         adminApi.getBackups(),
       ]);
       setStats(sData);
       setUsersList(uData.items || []);
+      setUserHasMore(Boolean(uData.hasMore));
       setTopicsList(tData || []);
       setPostsList(pData.items || []);
       setBackupsList(bData || []);
     } catch (err) {
       console.error('Error loading admin data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUserPageChange = async (newPage) => {
+    if (newPage < 1) return;
+    setUserPage(newPage);
+    setLoading(true);
+    try {
+      const uData = await adminApi.getUsers({ page: newPage, limit: 10 });
+      setUsersList(uData.items || []);
+      setUserHasMore(Boolean(uData.hasMore));
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -175,29 +657,61 @@ export default function AdminPage() {
   // User Actions
   const handleToggleLockUser = async (user) => {
     const nextStatus = user.status === 'locked' ? 'active' : 'locked';
+    const actionText = nextStatus === 'locked' ? 'khóa' : 'mở khóa';
+    if (!window.confirm(`Bạn có chắc chắn muốn ${actionText} tài khoản @${user.username} không?`)) {
+      return;
+    }
     try {
       await adminApi.setUserStatus(user.id, nextStatus);
       setUsersList((prev) =>
         prev.map((u) => (u.id === user.id ? { ...u, status: nextStatus } : u))
       );
-      showToast(`Đã ${nextStatus === 'locked' ? 'khóa' : 'mở khóa'} tài khoản @${user.username}`);
+      showToast(`Đã ${actionText} tài khoản @${user.username}`);
     } catch (err) {
       showToast('Thao tác không thành công', 'error');
     }
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    if (!newUserForm.username.trim() || !newUserForm.fullName.trim()) return;
+  const handleDeleteUser = async (user) => {
+    if (!window.confirm(`CẢNH BÁO: Bạn có chắc chắn muốn xóa tài khoản @${user.username}? Thao tác này sẽ xóa toàn bộ quan hệ trong đồ thị và không thể hoàn tác.`)) {
+      return;
+    }
     try {
-      const created = await adminApi.createUser(newUserForm);
-      setUsersList([created, ...usersList]);
-      setIsAddUserOpen(false);
-      setNewUserForm({ username: '', fullName: '', password: 'password123', email: '', role: 'user' });
-      showToast(`Đã tạo người dùng @${created.username}`);
+      await adminApi.deleteUser(user.id);
+      setUsersList((prev) => prev.filter((u) => u.id !== user.id));
+      showToast(`Đã xóa tài khoản @${user.username}`);
       loadAllData();
     } catch (err) {
-      showToast(err.message || 'Lỗi khi tạo người dùng', 'error');
+      showToast(err.message || 'Lỗi khi xóa tài khoản', 'error');
+    }
+  };
+
+  const handleResetPassword = async (user) => {
+    const newPass = window.prompt(`Nhập mật khẩu mới cho @${user.username} (tối thiểu 8 ký tự, có hoa, thường và số):`, 'Passw0rd123!');
+    if (!newPass) return;
+    if (newPass.length < 8) {
+      alert('Mật khẩu tối thiểu 8 ký tự!');
+      return;
+    }
+    try {
+      await adminApi.updateUser(user.id, { password: newPass });
+      showToast(`Đã đặt lại mật khẩu cho @${user.username}`);
+    } catch (err) {
+      showToast(err.message || 'Lỗi khi đặt lại mật khẩu', 'error');
+    }
+  };
+
+  const handleEditUser = async (user) => {
+    const newName = window.prompt(`Cập nhật họ và tên cho @${user.username}:`, user.fullName);
+    if (!newName || !newName.trim()) return;
+    try {
+      await adminApi.updateUser(user.id, { fullName: newName.trim() });
+      setUsersList((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, fullName: newName.trim() } : u))
+      );
+      showToast(`Đã cập nhật thông tin @${user.username}`);
+    } catch (err) {
+      showToast(err.message || 'Lỗi khi cập nhật thông tin', 'error');
     }
   };
 
@@ -244,12 +758,12 @@ export default function AdminPage() {
 
   // System Actions
   const handleSeed = async () => {
-    if (!confirm(`Tạo dữ liệu mẫu quy mô (${seedingScale}) vào hệ thống?`)) return;
+    if (!confirm('Khởi tạo lại bộ dữ liệu đồ thị mẫu (2.000 người dùng, 10.000 bài viết, 50 chủ đề)?')) return;
     setLoading(true);
     try {
-      await adminApi.seedGraph(seedingScale);
-      showToast(`Đã bắt đầu khởi tạo dữ liệu (${seedingScale})`);
-      setTimeout(loadAllData, 1500);
+      await adminApi.seedGraph();
+      showToast('Khởi tạo dữ liệu đồ thị mẫu thành công!');
+      setTimeout(loadAllData, 1000);
     } catch (e) {
       showToast('Lỗi khởi tạo dữ liệu', 'error');
     } finally {
@@ -398,6 +912,17 @@ export default function AdminPage() {
                 <Database className="h-4 w-4 shrink-0" strokeWidth={1.5} />
                 <span className="hidden lg:inline">Nhập/xuất &amp; sao lưu</span>
               </button>
+
+              <Link
+                to="/analytics"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-[10px] text-[13px] text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] transition-colors duration-150 btn-press"
+                title="Không gian Phân tích đồ thị"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Network className="h-4 w-4 text-[#2563EB] shrink-0" strokeWidth={1.5} />
+                  <span className="hidden lg:inline">Phân tích đồ thị</span>
+                </div>
+              </Link>
 
               <a
                 href="http://localhost:3000"
@@ -807,99 +1332,35 @@ export default function AdminPage() {
 
                 {/* Single Solid Accent Button in Header */}
                 <button
+                  ref={addUserTriggerRef}
                   type="button"
                   onClick={() => setIsAddUserOpen(true)}
-                  className="h-9 px-4 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs"
+                  className="h-9 px-4 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1"
                 >
                   <Plus className="h-4 w-4" strokeWidth={1.5} />
                   <span>Thêm người dùng</span>
                 </button>
               </div>
 
-              {/* Form Dialog Thêm Người Dùng */}
-              {isAddUserOpen && (
-                <div className="fixed inset-0 bg-black/25 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-                  <div className="bg-white border border-[#E5E9F0] rounded-[16px] p-6 max-w-md w-full space-y-4 shadow-xl animate-in fade-in zoom-in-95 duration-120">
-                    <div className="flex items-center justify-between border-b border-[#E5E9F0] pb-3">
-                      <h3 className="font-semibold text-base text-[#0F172A]">Thêm người dùng</h3>
-                      <button onClick={() => setIsAddUserOpen(false)} className="text-[#64748B] hover:text-[#0F172A]">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
+              {/* Modal Thêm Người Dùng bằng Portal */}
+              <AddUserModal
+                isOpen={isAddUserOpen}
+                onClose={() => setIsAddUserOpen(false)}
+                onSuccess={(created) => {
+                  setUsersList((prev) => [created, ...prev]);
+                  showToast(`Đã tạo người dùng @${created.username}`);
+                  loadAllData();
+                }}
+                triggerRef={addUserTriggerRef}
+              />
 
-                    <form onSubmit={handleCreateUser} className="space-y-3 text-[13px]">
-                      <div>
-                        <label className="text-xs font-medium text-[#475569]">Tên đăng nhập</label>
-                        <input
-                          type="text"
-                          required
-                          value={newUserForm.username}
-                          onChange={(e) => setNewUserForm({ ...newUserForm, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
-                          placeholder="vd: john_doe"
-                          className="w-full h-9 px-3 mt-1 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] focus:outline-none focus:border-[#2563EB]"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-[#475569]">Họ và tên</label>
-                        <input
-                          type="text"
-                          required
-                          value={newUserForm.fullName}
-                          onChange={(e) => setNewUserForm({ ...newUserForm, fullName: e.target.value })}
-                          placeholder="vd: John Doe"
-                          className="w-full h-9 px-3 mt-1 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] focus:outline-none focus:border-[#2563EB]"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-[#475569]">Mật khẩu khởi tạo</label>
-                        <input
-                          type="text"
-                          required
-                          value={newUserForm.password}
-                          onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
-                          className="w-full h-9 px-3 mt-1 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] focus:outline-none focus:border-[#2563EB]"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-[#475569]">Vai trò</label>
-                        <select
-                          value={newUserForm.role}
-                          onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value })}
-                          className="w-full h-9 px-3 mt-1 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] focus:outline-none focus:border-[#2563EB]"
-                        >
-                          <option value="user">Thành viên (User)</option>
-                          <option value="analyst">Phân tích (Analyst)</option>
-                          <option value="admin">Quản trị (Admin)</option>
-                        </select>
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E9F0]">
-                        <button
-                          type="button"
-                          onClick={() => setIsAddUserOpen(false)}
-                          className="h-9 px-4 rounded-[10px] text-xs text-[#475569] hover:bg-slate-100 btn-press"
-                        >
-                          Hủy
-                        </button>
-                        <button
-                          type="submit"
-                          className="h-9 px-4 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium text-xs btn-press shadow-2xs"
-                        >
-                          Tạo tài khoản
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-              {/* Table User (Headers: Sentence Case 13px/500, Status: Soft Chip, Lock: Ghost Button) */}
+              {/* Table User (Headers: Sentence Case 13px/500, Status: Soft Chip, Lock: Clear Action Button) */}
               <div className="bg-white border border-[#E5E9F0] card-hover rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                 <table className="w-full text-left text-[13px]">
                   <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
                     <tr>
                       <th className="py-3 px-4">Người dùng</th>
-                      <th className="py-3 px-4">Tên đăng nhập</th>
+                      <th className="py-3 px-4 min-w-[140px]">Tên đăng nhập</th>
                       <th className="py-3 px-4">Vai trò</th>
                       <th className="py-3 px-4">Số người theo dõi</th>
                       <th className="py-3 px-4">Trạng thái</th>
@@ -915,17 +1376,41 @@ export default function AdminPage() {
                         <tr key={u.id} className="hover:bg-[#F3F5F9]/60 transition-colors duration-150">
                           <td className="py-2.5 px-4">
                             <div className="flex items-center gap-2.5">
-                              <img src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} className="w-6 h-6 rounded-full object-cover bg-slate-100 ring-1 ring-white border border-[#E5E9F0]" />
+                              <img
+                                src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
+                                alt={u.fullName}
+                                className="w-6 h-6 rounded-full object-cover bg-slate-100 ring-1 ring-white border border-[#E5E9F0]"
+                              />
                               <span className="font-medium text-[#0F172A]">{u.fullName}</span>
                             </div>
                           </td>
-                          <td className="py-2.5 px-4 text-[12px] text-[#475569] tabular-nums">@{u.username}</td>
-                          <td className="py-2.5 px-4">
-                            <span className="text-[12px] text-[#475569]">
-                              {u.role === 'admin' ? 'Quản trị' : u.role === 'analyst' ? 'Phân tích' : 'Thành viên'}
+                          <td className="py-2.5 px-4 text-[12px] text-[#475569] tabular-nums">
+                            <span
+                              className="inline-block max-w-[160px] truncate align-middle"
+                              title={`@${u.username}`}
+                            >
+                              @{u.username}
                             </span>
                           </td>
-                          <td className="py-2.5 px-4 tabular-nums text-[#0F172A]">{followersCount}</td>
+                          <td className="py-2.5 px-4">
+                            {/* Role Badge: Quản trị viên (xanh), Thành viên (xám), Nhà phân tích (tím) */}
+                            {u.role === 'admin' ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#EFF4FF] text-[#2563EB] border border-[#BFDBFE]">
+                                Quản trị viên
+                              </span>
+                            ) : u.role === 'analyst' ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                                Nhà phân tích
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-[#475569] border border-slate-200">
+                                Thành viên
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4 tabular-nums text-[#0F172A]">
+                            {followersCount.toLocaleString('vi-VN')}
+                          </td>
                           <td className="py-2.5 px-4">
                             {/* Status Chip: Green tint / Red tint */}
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -938,20 +1423,87 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td className="py-2.5 px-4 text-right">
-                            {/* Ghost button with 1px border #E5E9F0, text #475569; on hover red tint bg #FEF2F2, border #FECACA, text #B91C1C */}
-                            <button
-                              type="button"
-                              onClick={() => handleToggleLockUser(u)}
-                              className="h-7 px-2.5 rounded-[8px] text-[12px] text-[#475569] bg-transparent border border-[#E5E9F0] hover:bg-[#FEF2F2] hover:border-[#FECACA] hover:text-[#B91C1C] transition-colors duration-150 btn-press"
-                            >
-                              {isLocked ? 'Mở khóa' : 'Khóa'}
-                            </button>
+                            <div className="inline-flex items-center justify-end gap-1.5">
+                              {/* Nút Khóa / Mở khóa với viền cam/đỏ nhạt rõ hành động */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleLockUser(u)}
+                                className={`h-7 px-2.5 rounded-[8px] text-[12px] font-medium transition-colors duration-150 btn-press focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                                  isLocked
+                                    ? 'bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 focus:ring-emerald-500'
+                                    : 'bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 focus:ring-amber-500'
+                                }`}
+                              >
+                                {isLocked ? 'Mở khóa' : 'Khóa'}
+                              </button>
+
+                              {/* Menu "⋯" chứa Sửa, Đặt lại mật khẩu, Xóa */}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="h-7 w-7 rounded-[8px] flex items-center justify-center text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100 border border-[#E5E9F0] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 transition-colors"
+                                    title="Tùy chọn khác"
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-44 bg-white border border-[#E5E9F0] rounded-[10px] shadow-lg p-1 text-xs">
+                                  <DropdownMenuItem
+                                    onClick={() => handleEditUser(u)}
+                                    className="px-2.5 py-1.5 rounded-[6px] text-[#0F172A] hover:bg-[#F1F5F9] cursor-pointer flex items-center gap-2"
+                                  >
+                                    <Edit className="h-3.5 w-3.5 text-[#64748B]" />
+                                    <span>Sửa thông tin</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleResetPassword(u)}
+                                    className="px-2.5 py-1.5 rounded-[6px] text-[#0F172A] hover:bg-[#F1F5F9] cursor-pointer flex items-center gap-2"
+                                  >
+                                    <KeyRound className="h-3.5 w-3.5 text-[#64748B]" />
+                                    <span>Đặt lại mật khẩu</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeleteUser(u)}
+                                    className="px-2.5 py-1.5 rounded-[6px] text-rose-600 hover:bg-rose-50 cursor-pointer flex items-center gap-2"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                                    <span>Xóa người dùng</span>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+
+                {/* Pagination Controls */}
+                <div className="p-3.5 bg-[#F8FAFC] border-t border-[#E5E9F0] flex items-center justify-between text-xs text-[#475569]">
+                  <div>
+                    Trang <span className="font-semibold text-[#0F172A] tabular-nums">{userPage}</span> • Đang hiển thị <span className="font-semibold text-[#0F172A] tabular-nums">{usersList.length}</span> / <span className="font-semibold text-[#0F172A] tabular-nums">{stats?.nodes?.User?.toLocaleString('vi-VN') || '10.000'}</span> người dùng
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={userPage <= 1 || loading}
+                      onClick={() => handleUserPageChange(userPage - 1)}
+                      className="h-8 px-3 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:bg-slate-50 hover:text-[#0F172A] disabled:opacity-40 disabled:pointer-events-none transition-colors btn-press shadow-2xs"
+                    >
+                      Trang trước
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!userHasMore || loading}
+                      onClick={() => handleUserPageChange(userPage + 1)}
+                      className="h-8 px-3 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:bg-slate-50 hover:text-[#0F172A] disabled:opacity-40 disabled:pointer-events-none transition-colors btn-press shadow-2xs"
+                    >
+                      Trang sau
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -1175,29 +1727,12 @@ export default function AdminPage() {
                     </label>
                   </div>
 
-                  {/* Sinh dữ liệu mẫu: Display text Nhỏ / Vừa / Lớn */}
+                  {/* Sinh dữ liệu mẫu quy mô lớn (2.000 Users, 10.000 Posts, 50 Topics) */}
                   <div className="p-4 bg-[#EFF4FF] border border-[#2563EB]/20 rounded-[12px] space-y-2.5">
                     <div className="font-semibold text-[13px] text-[#2563EB]">Sinh dữ liệu mẫu</div>
-                    <div className="flex gap-1.5">
-                      {[
-                        { scale: 'S', label: 'Nhỏ' },
-                        { scale: 'M', label: 'Vừa' },
-                        { scale: 'L', label: 'Lớn' }
-                      ].map((item) => (
-                        <button
-                          key={item.scale}
-                          type="button"
-                          onClick={() => setSeedingScale(item.scale)}
-                          className={`flex-1 h-7 rounded-[8px] text-[11px] font-medium transition-all btn-press ${
-                            seedingScale === item.scale
-                              ? 'bg-[#2563EB] text-white shadow-2xs'
-                              : 'bg-white text-[#475569] border border-[#E5E9F0]'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
+                    <p className="text-[12px] text-[#475569] leading-relaxed">
+                      2.000 người dùng, 10.000 bài viết, 50 chủ đề và ~110.000 kết nối
+                    </p>
                     {/* The single solid-accent button for this area */}
                     <button
                       type="button"

@@ -6,6 +6,9 @@ import {
   mockApi 
 } from '@/mock/mockData';
 import { authService } from '@/services/auth';
+import { topicsService } from '@/services/topics';
+import { postsService } from '@/services/posts';
+import { recommendService } from '@/services/recommend';
 import PostCard from '@/components/post/PostCard';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -36,7 +39,9 @@ import {
   UserCheck, 
   LogOut, 
   ShieldCheck,
-  Send
+  Send,
+  Sparkles,
+  Clock
 } from 'lucide-react';
 import { getTopicColor } from '@/lib/topicColor';
 import '@/styles/tokens.css';
@@ -54,10 +59,68 @@ export default function MainLayout() {
   const [topicTab, setTopicTab] = useState('trending'); // 'trending' | 'mine'
   const [unreadCount] = useState(3);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [feedMode, setFeedMode] = useState('forYou'); // 'forYou' | 'latest'
 
   // Feed posts state
-  const [postsList, setPostsList] = useState(() => mockApi.getPosts({}));
-  const friendSuggestions = mockApi.getFriendSuggestions(currentUser.id);
+  const [postsList, setPostsList] = useState([]);
+  const [friendSuggestions, setFriendSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  // Load real friend suggestions from FalkorDB backend (BT3 - UC-11)
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingSuggestions(true);
+    recommendService.getFriendRecommendations(5)
+      .then((data) => {
+        if (isMounted && data) {
+          setFriendSuggestions(data);
+        }
+      })
+      .catch((err) => {
+        console.error('Lỗi tải gợi ý kết bạn:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingSuggestions(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.id]);
+
+  // Load real posts from FalkorDB backend (Chế độ Gợi ý đồ thị hoặc Mới nhất)
+  useEffect(() => {
+    if (feedMode === 'forYou' && !selectedTopic) {
+      postsService.getRecommendPosts(30).then((items) => {
+        if (items && items.length > 0) {
+          setPostsList(items);
+        } else {
+          postsService.getPosts({ limit: 30 }).then((data) => {
+            if (data?.items) setPostsList(data.items);
+          });
+        }
+      });
+    } else {
+      postsService.getPosts({ topic: selectedTopic || undefined, limit: 30 }).then((data) => {
+        if (data?.items && data.items.length > 0) {
+          setPostsList(data.items);
+        }
+      });
+    }
+  }, [feedMode, selectedTopic]);
+
+  // Real backend topics states
+  const [trendingTopics, setTrendingTopics] = useState([]);
+  const [userInterests, setUserInterests] = useState([]);
+
+  useEffect(() => {
+    topicsService.getTrendingTopics({ limit: 5 }).then((data) => {
+      if (data && data.length > 0) setTrendingTopics(data);
+    });
+    topicsService.getMyInterests().then((data) => {
+      if (data && data.length > 0) setUserInterests(data);
+    });
+  }, [currentUser?.id]);
 
   // Scroll listener for topbar faint bottom shadow
   useEffect(() => {
@@ -73,35 +136,72 @@ export default function MainLayout() {
     ? postsList.filter((p) => p.topics?.some((t) => t.name === selectedTopic) || p.topicNames?.includes(selectedTopic))
     : postsList;
 
-  // Toggle follow/like suggestion
-  const toggleFollow = (userId) => {
+  // Toggle follow/like suggestion via real backend API
+  const toggleFollow = async (userId) => {
+    const isCurrentlyFollowed = !!followedUsers[userId];
     setFollowedUsers((prev) => ({
       ...prev,
-      [userId]: !prev[userId],
+      [userId]: !isCurrentlyFollowed,
     }));
+
+    try {
+      if (isCurrentlyFollowed) {
+        await recommendService.unfollowUser(userId);
+      } else {
+        await recommendService.followUser(userId);
+      }
+    } catch (err) {
+      console.error('Lỗi thay đổi trạng thái theo dõi:', err);
+      // Revert on failure
+      setFollowedUsers((prev) => ({
+        ...prev,
+        [userId]: isCurrentlyFollowed,
+      }));
+    }
   };
 
   // Create post handler
-  const handleCreatePost = (e) => {
+  const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!newPostContent.trim()) return;
 
-    const topicObj = mockTopics.find((t) => t.name === newPostTopic) || (newPostTopic ? { id: `top_${Date.now()}`, name: newPostTopic } : null);
+    const cleanTopic = newPostTopic.trim().replace(/^#/, '');
+    const topicObj = cleanTopic ? { id: cleanTopic, name: cleanTopic } : null;
 
-    const createdPost = {
-      id: `post_${Date.now()}`,
-      authorId: currentUser.id,
-      author: currentUser,
-      content: newPostContent.trim(),
-      createdAt: Date.now(),
-      likeCount: 0,
-      shareCount: 0,
-      commentCount: 0,
-      topicNames: topicObj ? [topicObj.name] : [],
-      topics: topicObj ? [topicObj] : [],
-    };
+    try {
+      const created = await postsService.createPost({
+        content: newPostContent.trim(),
+        topics: cleanTopic ? [cleanTopic] : [],
+      });
 
-    setPostsList([createdPost, ...postsList]);
+      const newPost = {
+        ...created,
+        author: currentUser,
+        likeCount: 0,
+        shareCount: 0,
+        commentCount: 0,
+        topicNames: topicObj ? [topicObj.name] : [],
+        topics: topicObj ? [topicObj] : [],
+        createdAt: Date.now(),
+      };
+      setPostsList((prev) => [newPost, ...prev]);
+    } catch (err) {
+      console.warn('Lỗi tạo bài viết backend:', err.message);
+      const createdPost = {
+        id: `post_${Date.now()}`,
+        authorId: currentUser.id,
+        author: currentUser,
+        content: newPostContent.trim(),
+        createdAt: Date.now(),
+        likeCount: 0,
+        shareCount: 0,
+        commentCount: 0,
+        topicNames: topicObj ? [topicObj.name] : [],
+        topics: topicObj ? [topicObj] : [],
+      };
+      setPostsList([createdPost, ...postsList]);
+    }
+
     setNewPostContent('');
     setNewPostTopic('');
     setIsCreatePostOpen(false);
@@ -279,47 +379,65 @@ export default function MainLayout() {
               </div>
 
               <div className="space-y-3">
-                {friendSuggestions.map((user) => {
-                  const isFollowed = followedUsers[user.id] ?? false;
-
-                  return (
-                    <div key={user.id} className="flex items-center justify-between gap-3 group">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <img
-                          src={user.avatar}
-                          alt={user.fullName}
-                          className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <div className="font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] cursor-pointer">
-                            {user.fullName}
-                          </div>
-                          {/* Secondary text: 13px #64748B chuẩn AA */}
-                          <div className="text-[13px] text-[#64748B] truncate tabular-nums">
-                            {user.mutualFriends || 3} bạn chung
-                          </div>
+                {loadingSuggestions ? (
+                  <div className="space-y-2.5">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-2.5 animate-pulse">
+                        <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-3 bg-slate-200 rounded w-24" />
+                          <div className="h-2.5 bg-slate-100 rounded w-16" />
                         </div>
                       </div>
+                    ))}
+                  </div>
+                ) : friendSuggestions.length === 0 ? (
+                  <div className="text-xs text-[#64748B] py-2 text-center">
+                    Chưa có gợi ý mới
+                  </div>
+                ) : (
+                  friendSuggestions.map((user) => {
+                    const isFollowed = followedUsers[user.id] ?? false;
 
-                      {/* Follow Button: UserPlus / UserCheck icon */}
-                      <button
-                        onClick={() => toggleFollow(user.id)}
-                        className={`h-8 w-8 rounded-[10px] flex items-center justify-center transition-all duration-150 btn-press ${
-                          isFollowed
-                            ? 'bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/20'
-                            : 'border border-[#E5E9F0] text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
-                        }`}
-                        title={isFollowed ? 'Đang theo dõi' : 'Theo dõi'}
-                      >
-                        {isFollowed ? (
-                          <UserCheck className="h-4 w-4" />
-                        ) : (
-                          <UserPlus className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
-                  );
-                })}
+                    return (
+                      <div key={user.id} className="flex items-center justify-between gap-3 group">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=b6e3f4`}
+                            alt={user.fullName || user.username}
+                            className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] cursor-pointer">
+                              {user.fullName || user.username}
+                            </div>
+                            {/* Secondary text: 13px #64748B chuẩn AA */}
+                            <div className="text-[12px] text-[#64748B] truncate tabular-nums" title={user.reason}>
+                              {user.reason || (user.mutual ? `${user.mutual} bạn chung` : `${user.followers || 0} người theo dõi`)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Follow Button: UserPlus / UserCheck icon */}
+                        <button
+                          onClick={() => toggleFollow(user.id)}
+                          className={`h-8 w-8 rounded-[10px] flex items-center justify-center transition-all duration-150 btn-press ${
+                            isFollowed
+                              ? 'bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/20'
+                              : 'border border-[#E5E9F0] text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
+                          }`}
+                          title={isFollowed ? 'Đang theo dõi' : 'Theo dõi'}
+                        >
+                          {isFollowed ? (
+                            <UserCheck className="h-4 w-4" />
+                          ) : (
+                            <UserPlus className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
               {/* Nút Khám phá đồ thị: Tint style với subtitle 12px secondary text */}
@@ -372,6 +490,35 @@ export default function MainLayout() {
               >
                 <Plus className="h-4 w-4" />
                 <span>Đăng bài</span>
+              </button>
+            </div>
+
+            {/* 2 TABS CHUYỂN ĐỔI CHẾ ĐỘ BẢNG TIN: Dành cho bạn (Gợi ý đồ thị BT4) | Mới nhất */}
+            <div className="flex items-center gap-1.5 p-1 bg-white border border-[#E5E9F0] rounded-[12px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] w-fit animate-fade-up">
+              <button
+                onClick={() => {
+                  setFeedMode('forYou');
+                  setSelectedTopic(null);
+                }}
+                className={`text-xs px-3.5 py-1.5 rounded-[8px] font-semibold transition-all duration-150 btn-press flex items-center gap-1.5 ${
+                  feedMode === 'forYou' && !selectedTopic
+                    ? 'bg-[#EFF4FF] text-[#2563EB] shadow-2xs'
+                    : 'text-[#64748B] hover:text-[#0F172A]'
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Dành cho bạn</span>
+              </button>
+              <button
+                onClick={() => setFeedMode('latest')}
+                className={`text-xs px-3.5 py-1.5 rounded-[8px] font-semibold transition-all duration-150 btn-press flex items-center gap-1.5 ${
+                  feedMode === 'latest' || selectedTopic
+                    ? 'bg-[#EFF4FF] text-[#2563EB] shadow-2xs'
+                    : 'text-[#64748B] hover:text-[#0F172A]'
+                }`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>Mới nhất</span>
               </button>
             </div>
 
@@ -502,13 +649,13 @@ export default function MainLayout() {
               {/* Nội dung Tab Thịnh hành */}
               {topicTab === 'trending' && (
                 <div className="space-y-1.5 pt-0.5">
-                  {mockTopics.slice(0, 5).map((topic, index) => {
+                  {(trendingTopics.length > 0 ? trendingTopics : mockTopics.slice(0, 5)).map((topic, index) => {
                     const isSelected = selectedTopic === topic.name;
                     const dotColor = getTopicColor(topic.name);
 
                     return (
                       <div
-                        key={topic.id}
+                        key={topic.id || topic.name}
                         onClick={() => setSelectedTopic(isSelected ? null : topic.name)}
                         className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors duration-150 ${
                           isSelected 
@@ -524,7 +671,7 @@ export default function MainLayout() {
                           <span className="font-medium text-[#2563EB]">#{topic.name}</span>
                         </div>
                         <span className="text-[12px] text-[#64748B] tabular-nums">
-                          {topic.postCount ?? 8} bài
+                          {topic.postCount ?? topic.interactions ?? topic.likes ?? 8} bài
                         </span>
                       </div>
                     );
@@ -535,13 +682,13 @@ export default function MainLayout() {
               {/* Nội dung Tab Của bạn (dạng chips kèm pastel dot & X khi active) */}
               {topicTab === 'mine' && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {mockTopics.map((topic) => {
+                  {(userInterests.length > 0 ? userInterests : mockTopics).map((topic) => {
                     const isSelected = selectedTopic === topic.name;
                     const dotColor = getTopicColor(topic.name);
 
                     return (
                       <button
-                        key={topic.id}
+                        key={topic.id || topic.name}
                         onClick={() => setSelectedTopic(isSelected ? null : topic.name)}
                         className={`h-8 px-3 rounded-[10px] text-xs font-medium flex items-center gap-1.5 transition-all duration-150 btn-press ${
                           isSelected
