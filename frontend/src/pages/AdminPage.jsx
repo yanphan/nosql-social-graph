@@ -243,7 +243,7 @@ export default function AdminPage() {
 
   // System Actions
   const handleSeed = async () => {
-    if (!confirm('Khởi tạo lại bộ dữ liệu đồ thị mẫu chuẩn (1.000 người dùng, 3.000 bài viết, 30 chủ đề)?')) return;
+    if (!confirm('Khởi tạo lại bộ dữ liệu đồ thị mẫu (2.000 người dùng, 10.000 bài viết, 50 chủ đề)?')) return;
     setLoading(true);
     try {
       await adminApi.seedGraph();
@@ -1174,11 +1174,11 @@ export default function AdminPage() {
                     </label>
                   </div>
 
-                  {/* Sinh dữ liệu mẫu chuẩn (1.000 Users, 3.000 Posts, 30 Topics) */}
+                  {/* Sinh dữ liệu mẫu quy mô lớn (2.000 Users, 10.000 Posts, 50 Topics) */}
                   <div className="p-4 bg-[#EFF4FF] border border-[#2563EB]/20 rounded-[12px] space-y-2.5">
                     <div className="font-semibold text-[13px] text-[#2563EB]">Sinh dữ liệu mẫu</div>
                     <p className="text-[12px] text-[#475569] leading-relaxed">
-                      1.000 người dùng, 3.000 bài viết, 30 chủ đề và ~45.000 kết nối
+                      2.000 người dùng, 10.000 bài viết, 50 chủ đề và ~110.000 kết nối
                     </p>
                     {/* The single solid-accent button for this area */}
                     <button

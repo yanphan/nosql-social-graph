@@ -1,10 +1,10 @@
-// Cấu hình sinh dữ liệu mẫu chuẩn (1.000 Users, 3.000 Posts, 30 Topics, ~45.000 Kết nối)
+// Cấu hình sinh dữ liệu mẫu chuẩn quy mô lớn (2.000 Users, 10.000 Posts, 50 Topics, ~110.000 Kết nối)
 export const SEED_CONFIG = {
-  users: 1_000,       // 1.000 người dùng (3 demo + 997 tự động)
-  posts: 3_000,       // 3.000 bài viết
-  topics: 30,         // 30 chủ đề công nghệ & đời sống
-  avgFollow: 15,      // trung bình ~15 lượt theo dõi / user (~15.000 cạnh FOLLOWS)
-  likesPerPost: 6,    // trung bình ~6 like / post (~18.000 cạnh LIKED)
+  users: 2_000,       // 2.000 người dùng (3 demo + 1.997 tự động)
+  posts: 10_000,      // 10.000 bài viết
+  topics: 50,         // 50 chủ đề công nghệ & đời sống
+  avgFollow: 15,      // trung bình ~15 lượt theo dõi / user (~30.000 cạnh FOLLOWS)
+  likesPerPost: 6,    // trung bình ~6 like / post (~60.000 cạnh LIKED)
   seed: 42,           // seed cố định để tái lập 100%
 };
 
@@ -17,7 +17,7 @@ export const SCALES = {
   XL: SEED_CONFIG,
 };
 
-export const BATCH = 1000;
+export const BATCH = 2000;
 
 export const DEMO_ACCOUNTS = [
   { username: 'admin',   role: 'admin',   fullName: 'Quản trị viên', email: 'admin@social.local' },
