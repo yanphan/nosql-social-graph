@@ -26,16 +26,15 @@ export default function LoginPage() {
     remember: true,
   });
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const executeLogin = async (username, password) => {
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (!form.username.trim()) {
+    if (!username?.trim()) {
       setErrorMsg('Vui lòng nhập tên đăng nhập');
       return;
     }
-    if (!form.password) {
+    if (!password) {
       setErrorMsg('Vui lòng nhập mật khẩu');
       return;
     }
@@ -43,21 +42,26 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await authService.login({
-        username: form.username,
-        password: form.password,
+        username: username.trim(),
+        password,
       });
 
       if (res.success) {
         setSuccessMsg(`Chào mừng trở lại, ${res.user.fullName}!`);
         setTimeout(() => {
           navigate('/');
-        }, 500);
+        }, 350);
       }
     } catch (err) {
       setErrorMsg(err.message || 'Đăng nhập không thành công');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    executeLogin(form.username, form.password);
   };
 
   return (
@@ -183,18 +187,14 @@ export default function LoginPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setForm({ username: 'admin', password: 'Passw0rd!', remember: true });
-                    }}
+                    onClick={() => executeLogin('admin', 'Passw0rd!')}
                     className="py-2 px-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold border border-slate-200 transition-colors"
                   >
                     👑 Quản trị (admin)
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setForm({ username: 'alice', password: 'Passw0rd!', remember: true });
-                    }}
+                    onClick={() => executeLogin('alice', 'Passw0rd!')}
                     className="py-2 px-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold border border-slate-200 transition-colors"
                   >
                     👤 Người dùng (alice)
