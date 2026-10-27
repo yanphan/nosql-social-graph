@@ -1,10 +1,10 @@
-// Cấu hình sinh dữ liệu mẫu chuẩn quy mô lớn (2.000 Users, 10.000 Posts, 50 Topics, ~110.000 Kết nối)
+// Cấu hình sinh dữ liệu mẫu chuẩn quy mô lớn (10.000 Users, 30.000 Posts, 50 Topics, ~386.500 Kết nối)
 export const SEED_CONFIG = {
-  users: 2_000,       // 2.000 người dùng (3 demo + 1.997 tự động)
-  posts: 10_000,      // 10.000 bài viết
+  users: 10_000,      // 10.000 người dùng (3 demo + 9.997 tự động)
+  posts: 30_000,      // 30.000 bài viết
   topics: 50,         // 50 chủ đề công nghệ & đời sống
-  avgFollow: 15,      // trung bình ~15 lượt theo dõi / user (~30.000 cạnh FOLLOWS)
-  likesPerPost: 6,    // trung bình ~6 like / post (~60.000 cạnh LIKED)
+  avgFollow: 15,      // trung bình ~15 lượt theo dõi / user (~150.000 cạnh FOLLOWS)
+  likesPerPost: 3,    // trung bình 3 like / post (~90.000 cạnh LIKED)
   seed: 42,           // seed cố định để tái lập 100%
 };
 
