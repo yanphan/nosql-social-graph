@@ -32,9 +32,9 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
   const [newComment, setNewComment] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Load real comments from FalkorDB backend if post is from backend
+  // Load real comments from FalkorDB backend lazily when comments are opened
   useEffect(() => {
-    if (post.id && !post.id.startsWith('post_mock')) {
+    if (showComments && post.id && post.id.startsWith('pst_')) {
       postsService.getComments(post.id).then((res) => {
         if (res?.items && res.items.length > 0) {
           setComments(res.items.map((c, i) => ({
@@ -48,9 +48,9 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
             likeCount: 0,
           })));
         }
-      });
+      }).catch(() => {});
     }
-  }, [post.id]);
+  }, [showComments, post.id]);
 
   // Toggle Like with 150ms bounce animation & sync backend
   const handleLike = () => {

@@ -61,7 +61,7 @@ export default function MainLayout() {
   const [feedMode, setFeedMode] = useState('forYou'); // 'forYou' | 'latest'
 
   // Feed posts state
-  const [postsList, setPostsList] = useState(() => mockApi.getPosts({}));
+  const [postsList, setPostsList] = useState([]);
   const friendSuggestions = mockApi.getFriendSuggestions(currentUser.id);
 
   // Load real posts from FalkorDB backend (Chế độ Gợi ý đồ thị hoặc Mới nhất)

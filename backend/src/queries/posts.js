@@ -10,21 +10,23 @@ export const posts = {
   // Feed/list. $authorId, $since có thể là null. likedByMe dựa trên $me.
   list: `MATCH (a:User)-[:POSTED]->(p:Post)
     WHERE ($authorId IS NULL OR a.id = $authorId) AND p.createdAt >= $since
+    WITH a, p ORDER BY p.createdAt DESC SKIP $skip LIMIT $limit
     OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
     WITH a, p, collect(t.name) AS topics
     OPTIONAL MATCH (:User {id:$me})-[l:LIKED]->(p)
     RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
            topics, l IS NOT NULL AS likedByMe
-    ORDER BY p.createdAt DESC SKIP $skip LIMIT $limit`,
+    ORDER BY p.createdAt DESC`,
 
   listByTopic: `MATCH (a:User)-[:POSTED]->(p:Post)-[:ABOUT]->(:Topic {name:$topic})
     WHERE p.createdAt >= $since
+    WITH a, p ORDER BY p.createdAt DESC SKIP $skip LIMIT $limit
     OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
     WITH a, p, collect(t.name) AS topics
     OPTIONAL MATCH (:User {id:$me})-[l:LIKED]->(p)
     RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
            topics, l IS NOT NULL AS likedByMe
-    ORDER BY p.createdAt DESC SKIP $skip LIMIT $limit`,
+    ORDER BY p.createdAt DESC`,
 
   findById: `MATCH (a:User)-[:POSTED]->(p:Post {id:$id})
     OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
