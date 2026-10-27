@@ -17,6 +17,10 @@ export const authService = {
           // chuyển đổi sang admin
           return await authService.login({ username: 'admin', password: DEMO_PASSWORD });
         }
+        // Nếu trang yêu cầu analyst nhưng user hiện tại không phải analyst hoặc admin
+        if (preferredRole === 'analyst' && u.role !== 'analyst' && u.role !== 'admin') {
+          return await authService.login({ username: 'analyst', password: DEMO_PASSWORD });
+        }
         // Kiểm tra token còn sống không
         const res = await api.get('/auth/me');
         if (res.data?.ok && res.data?.data) {
@@ -32,8 +36,8 @@ export const authService = {
       }
     }
 
-    // Tự động đăng nhập với tài khoản mặc định (alice cho bảng tin, admin cho trang quản trị)
-    const defaultUsername = preferredRole === 'admin' ? 'admin' : 'alice';
+    // Tự động đăng nhập với tài khoản mặc định
+    const defaultUsername = preferredRole === 'admin' ? 'admin' : preferredRole === 'analyst' ? 'analyst' : 'alice';
     try {
       return await authService.login({ username: defaultUsername, password: DEMO_PASSWORD });
     } catch (err) {

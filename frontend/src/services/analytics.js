@@ -9,7 +9,7 @@ export async function ensureAnalystAuth() {
     user = JSON.parse(userStr);
   } catch {}
   if (!user || (user.role !== 'admin' && user.role !== 'analyst') || !localStorage.getItem(TOKEN_KEY)) {
-    await authService.ensureSession('admin');
+    await authService.ensureSession('analyst');
   }
 }
 

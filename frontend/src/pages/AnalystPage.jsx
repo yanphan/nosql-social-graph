@@ -323,7 +323,7 @@ export function buildCytoscapeStyle(isDark, activeMenu) {
 
 export default function AnalystPage() {
   const navigate = useNavigate();
-  const [currentUser] = useState(() => authService.getStoredUser());
+  const [currentUser, setCurrentUser] = useState(() => authService.getStoredUser());
 
   // Navigation: 'overview' | 'explore' | 'pagerank' | 'communities' | 'shortest_path'
   const [activeMenu, setActiveMenu] = useState('explore');
@@ -530,6 +530,8 @@ export default function AnalystPage() {
     setError(null);
     try {
       await analyticsApi.ensureAnalystAuth();
+      const stored = authService.getStoredUser();
+      if (stored) setCurrentUser(stored);
       const [sData, gData, kData, cData, tData] = await Promise.all([
         analyticsApi.getStats(),
         analyticsApi.getSubgraph({
