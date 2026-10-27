@@ -6,6 +6,7 @@ import {
   mockApi 
 } from '@/mock/mockData';
 import { authService } from '@/services/auth';
+import { topicsService } from '@/services/topics';
 import PostCard from '@/components/post/PostCard';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -58,6 +59,19 @@ export default function MainLayout() {
   // Feed posts state
   const [postsList, setPostsList] = useState(() => mockApi.getPosts({}));
   const friendSuggestions = mockApi.getFriendSuggestions(currentUser.id);
+
+  // Real backend topics states
+  const [trendingTopics, setTrendingTopics] = useState([]);
+  const [userInterests, setUserInterests] = useState([]);
+
+  useEffect(() => {
+    topicsService.getTrendingTopics({ limit: 5 }).then((data) => {
+      if (data && data.length > 0) setTrendingTopics(data);
+    });
+    topicsService.getMyInterests().then((data) => {
+      if (data && data.length > 0) setUserInterests(data);
+    });
+  }, [currentUser?.id]);
 
   // Scroll listener for topbar faint bottom shadow
   useEffect(() => {
@@ -502,13 +516,13 @@ export default function MainLayout() {
               {/* Nội dung Tab Thịnh hành */}
               {topicTab === 'trending' && (
                 <div className="space-y-1.5 pt-0.5">
-                  {mockTopics.slice(0, 5).map((topic, index) => {
+                  {(trendingTopics.length > 0 ? trendingTopics : mockTopics.slice(0, 5)).map((topic, index) => {
                     const isSelected = selectedTopic === topic.name;
                     const dotColor = getTopicColor(topic.name);
 
                     return (
                       <div
-                        key={topic.id}
+                        key={topic.id || topic.name}
                         onClick={() => setSelectedTopic(isSelected ? null : topic.name)}
                         className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors duration-150 ${
                           isSelected 
@@ -524,7 +538,7 @@ export default function MainLayout() {
                           <span className="font-medium text-[#2563EB]">#{topic.name}</span>
                         </div>
                         <span className="text-[12px] text-[#64748B] tabular-nums">
-                          {topic.postCount ?? 8} bài
+                          {topic.postCount ?? topic.interactions ?? topic.likes ?? 8} bài
                         </span>
                       </div>
                     );
@@ -535,13 +549,13 @@ export default function MainLayout() {
               {/* Nội dung Tab Của bạn (dạng chips kèm pastel dot & X khi active) */}
               {topicTab === 'mine' && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {mockTopics.map((topic) => {
+                  {(userInterests.length > 0 ? userInterests : mockTopics).map((topic) => {
                     const isSelected = selectedTopic === topic.name;
                     const dotColor = getTopicColor(topic.name);
 
                     return (
                       <button
-                        key={topic.id}
+                        key={topic.id || topic.name}
                         onClick={() => setSelectedTopic(isSelected ? null : topic.name)}
                         className={`h-8 px-3 rounded-[10px] text-xs font-medium flex items-center gap-1.5 transition-all duration-150 btn-press ${
                           isSelected

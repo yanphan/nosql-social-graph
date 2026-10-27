@@ -47,6 +47,8 @@ export const topics = {
   remove: `MATCH (t:Topic {id:$id}) DETACH DELETE t`,
   setInterests: `MATCH (u:User {id:$uid}) UNWIND $items AS it
     MATCH (t:Topic {id:it.topicId}) MERGE (u)-[r:INTERESTED_IN]->(t) SET r.score = it.score`,
+  userInterests: `MATCH (u:User {id:$uid})-[r:INTERESTED_IN]->(t:Topic) OPTIONAL MATCH (t)<-[:ABOUT]-(p:Post)
+    RETURN t, r.score AS score, count(p) AS postCount ORDER BY score DESC`,
   search: `MATCH (t:Topic) WHERE toLower(t.name) CONTAINS toLower($q) RETURN t LIMIT $limit`,
 };
 

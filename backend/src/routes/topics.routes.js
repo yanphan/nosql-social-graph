@@ -98,6 +98,16 @@ router.delete(
   })
 );
 
+// GET /api/me/interests (Các chủ đề user có quan hệ INTERESTED_IN)
+router.get(
+  '/me/interests',
+  requireAuth,
+  asyncH(async (req, res) => {
+    const data = await topicsService.getUserInterests(req.user.id);
+    return ok(res, data);
+  })
+);
+
 // PUT /api/me/interests
 router.put(
   '/me/interests',

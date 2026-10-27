@@ -15,7 +15,7 @@ export const topicsService = {
   },
 
   // Lấy danh sách chủ đề thịnh hành (dựa trên thuật toán đồ thị interactions)
-  getTrendingTopics: async ({ days = 7, limit = 10 } = {}) => {
+  getTrendingTopics: async ({ days = 7, limit = 5 } = {}) => {
     try {
       const res = await api.get('/topics/trending', { params: { days, limit } });
       if (res.data?.ok && res.data?.data) {
@@ -23,6 +23,19 @@ export const topicsService = {
       }
     } catch (err) {
       console.warn('Lỗi gọi API /topics/trending:', err.message);
+    }
+    return [];
+  },
+
+  // Lấy danh sách chủ đề của bạn (các chủ đề user đang có mối quan hệ INTERESTED_IN)
+  getMyInterests: async () => {
+    try {
+      const res = await api.get('/me/interests');
+      if (res.data?.ok && res.data?.data) {
+        return res.data.data;
+      }
+    } catch (err) {
+      console.warn('Lỗi gọi API /me/interests:', err.message);
     }
     return [];
   },
