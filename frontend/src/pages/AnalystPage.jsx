@@ -267,26 +267,35 @@ export default function AnalystPage() {
             'font-weight': 500,
             color: isDarkCanvas ? '#E2E8F0' : '#1E293B',
             'text-valign': 'bottom',
-            'text-margin-y': 4,
-            'text-background-opacity': isDarkCanvas ? 0.7 : 0.8,
+            'text-margin-y': 5,
+            'text-background-opacity': isDarkCanvas ? 0.75 : 0.85,
             'text-background-color': isDarkCanvas ? '#0B1220' : '#FFFFFF',
-            'text-background-padding': '2px',
+            'text-background-padding': '3px',
             'text-background-shape': 'roundrectangle',
             width: (ele) => {
+              const type = ele.data('type');
+              if (type === 'Topic') return 40;
+              if (type === 'Post') return 34;
               const pr = ele.data('pagerank') || 0.05;
-              // Quy mô bán kính từ 16px đến 56px theo căn bậc 2 của PageRank
-              return Math.max(16, Math.min(56, Math.round(Math.sqrt(pr) * 75)));
+              return Math.max(26, Math.min(58, Math.round(Math.sqrt(pr) * 85)));
             },
             height: (ele) => {
+              const type = ele.data('type');
+              if (type === 'Topic') return 40;
+              if (type === 'Post') return 26;
               const pr = ele.data('pagerank') || 0.05;
-              return Math.max(16, Math.min(56, Math.round(Math.sqrt(pr) * 75)));
+              return Math.max(26, Math.min(58, Math.round(Math.sqrt(pr) * 85)));
+            },
+            shape: (ele) => {
+              const type = ele.data('type');
+              if (type === 'Topic') return 'diamond';
+              if (type === 'Post') return 'round-rectangle';
+              return 'ellipse';
             },
             'background-color': (ele) => {
-              // Nếu đang xem Bản đồ cộng đồng (UC-14)
               if (activeMenu === 'communities') {
                 return ele.data('communityColor') || '#2563EB';
               }
-              // Mặc định: theo loại Node
               return NODE_TYPE_COLORS[ele.data('type')] || '#2563EB';
             },
             'border-width': 2,
@@ -295,14 +304,27 @@ export default function AnalystPage() {
             'transition-duration': '0.2s',
           },
         },
+        // Topic Nodes (Chủ đề - Diamond nổi bật)
+        {
+          selector: 'node[type = "Topic"]',
+          style: {
+            'border-width': 3,
+            'border-color': '#FFFFFF',
+            'font-weight': 600,
+            'font-size': '12px',
+          },
+        },
         // Top KOLs (UC-13) - Viền sáng hào quang nổi bật
         {
           selector: 'node[?isKOL]',
           style: {
-            'border-width': 3,
+            'border-width': 3.5,
             'border-color': '#F59E0B',
             'font-weight': 600,
             'font-size': '12px',
+            'shadow-blur': 14,
+            'shadow-color': '#F59E0B',
+            'shadow-opacity': 0.6,
           },
         },
         // Edges
@@ -314,20 +336,30 @@ export default function AnalystPage() {
             'target-arrow-color': (ele) => EDGE_COLORS[ele.data('type')] || '#94A3B8',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
-            'arrow-scale': 0.8,
-            opacity: isDarkCanvas ? 0.45 : 0.6,
+            'arrow-scale': 0.85,
+            opacity: isDarkCanvas ? 0.5 : 0.65,
             'line-style': (ele) => (ele.data('type') === 'ABOUT' ? 'dashed' : 'solid'),
+          },
+        },
+        // About edges (Chủ đề - Nét đứt màu tím)
+        {
+          selector: 'edge[type = "ABOUT"]',
+          style: {
+            width: 2,
+            'line-style': 'dashed',
+            'line-color': '#A855F7',
+            'target-arrow-color': '#A855F7',
           },
         },
         // Hover state
         {
           selector: 'node:active, node:hover',
           style: {
-            'border-width': 3,
+            'border-width': 3.5,
             'border-color': '#3B82F6',
-            'shadow-blur': 12,
+            'shadow-blur': 14,
             'shadow-color': '#2563EB',
-            'shadow-opacity': 0.5,
+            'shadow-opacity': 0.6,
           },
         },
         // Selected Node
@@ -336,16 +368,16 @@ export default function AnalystPage() {
           style: {
             'border-width': 4,
             'border-color': '#2563EB',
-            'shadow-blur': 16,
+            'shadow-blur': 18,
             'shadow-color': '#2563EB',
-            'shadow-opacity': 0.7,
+            'shadow-opacity': 0.8,
           },
         },
         // Dimmed nodes/edges
         {
           selector: '.dimmed',
           style: {
-            opacity: 0.12,
+            opacity: 0.1,
           },
         },
         // Highlighted community nodes
@@ -353,10 +385,10 @@ export default function AnalystPage() {
           selector: '.highlighted',
           style: {
             opacity: 1,
-            'border-width': 3,
+            'border-width': 3.5,
             'border-color': '#FFFFFF',
-            'shadow-blur': 14,
-            'shadow-opacity': 0.8,
+            'shadow-blur': 16,
+            'shadow-opacity': 0.85,
           },
         },
         // Shortest Path Highlighting (UC-09)
@@ -365,25 +397,29 @@ export default function AnalystPage() {
           style: {
             opacity: 1,
             'border-color': '#EAB308',
-            'border-width': 4,
+            'border-width': 4.5,
             'line-color': '#EAB308',
             'target-arrow-color': '#EAB308',
-            width: 3.5,
-            'shadow-blur': 18,
+            width: 4,
+            'shadow-blur': 20,
             'shadow-color': '#EAB308',
-            'shadow-opacity': 0.9,
+            'shadow-opacity': 0.95,
           },
         },
       ],
       layout: {
-        name: graphLayout === 'fcose' ? 'fcose' : graphLayout,
+        name: graphLayout === 'fcose' ? 'cose' : graphLayout,
         animate: true,
         animationDuration: 600,
-        randomize: false,
+        randomize: true,
         fit: true,
-        padding: 40,
-        nodeRepulsion: 6500,
-        idealEdgeLength: 60,
+        padding: 60,
+        componentSpacing: 80,
+        nodeRepulsion: 12000,
+        idealEdgeLength: 85,
+        edgeElasticity: 100,
+        gravity: 0.2,
+        numIter: 1000,
       },
     });
 
@@ -1104,6 +1140,18 @@ export default function AnalystPage() {
                   <Maximize2 className="h-4 w-4" />
                 </button>
                 <div className="h-px bg-[#E2E8F0] my-0.5" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextLayout = graphLayout === 'cose' ? 'concentric' : graphLayout === 'concentric' ? 'circle' : 'cose';
+                    setGraphLayout(nextLayout);
+                    showToast(`Bố cục đồ thị: ${nextLayout === 'cose' ? 'Lực liên kết (Cose)' : nextLayout === 'concentric' ? 'Đồng tâm theo bậc (Concentric)' : 'Vòng tròn (Circle)'}`);
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 text-[#475569] hover:text-[#0F172A]"
+                  title={`Đổi kiểu bố cục (hiện tại: ${graphLayout === 'cose' ? 'Lực liên kết' : graphLayout === 'concentric' ? 'Đồng tâm' : 'Vòng tròn'})`}
+                >
+                  <Layers className="h-4 w-4" />
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsDarkCanvas(!isDarkCanvas)}

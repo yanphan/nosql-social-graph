@@ -187,6 +187,29 @@ export async function neighborhood(id, limit = 100) {
 }
 
 export async function overview(limit = 100) {
-  const rows = await read(analytics.overview, { limit });
+  const l = Math.max(20, Math.min(300, Number(limit) || 100));
+  const followsLimit = Math.max(10, Math.round(l * 0.35));
+  const postedLimit = Math.max(10, Math.round(l * 0.30));
+  const likedLimit = Math.max(10, Math.round(l * 0.15));
+
+  try {
+    const q = `
+      MATCH (a:User)-[r:FOLLOWS]->(b:User) RETURN a, r, b LIMIT ${followsLimit}
+      UNION
+      MATCH (a:User)-[r:POSTED]->(b:Post) RETURN a, r, b LIMIT ${postedLimit}
+      UNION
+      MATCH (t:Topic) WITH t LIMIT 8 MATCH (p:Post)-[r:ABOUT]->(t) WITH t, collect({p:p, r:r})[0..3] AS pairs UNWIND pairs AS pair RETURN pair.p AS a, pair.r AS r, t AS b
+      UNION
+      MATCH (a:User)-[r:LIKED]->(b:Post) RETURN a, r, b LIMIT ${likedLimit}
+    `;
+    const rows = await read(q);
+    if (rows && rows.length > 0) {
+      return rowsToGraph(rows);
+    }
+  } catch (err) {
+    console.warn('Overview UNION query fallback:', err.message);
+  }
+
+  const rows = await read(analytics.overview, { limit: l });
   return rowsToGraph(rows);
 }

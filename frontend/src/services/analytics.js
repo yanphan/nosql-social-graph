@@ -229,15 +229,26 @@ export const analyticsApi = {
             '#EF4444', '#EAB308', '#EC4899', '#64748B'
           ];
           const nodes = rawNodes.map((n, idx) => {
-            const props = n.properties || n;
-            const type = n.labels?.[0] || props.type || (props.username ? 'User' : props.name ? 'Topic' : 'Post');
-            const community = (idx % 6) + 1;
-            const pagerank = +(props.pagerank || (0.05 + ((idx < 5 ? 0.35 - idx * 0.05 : 0.03)))).toFixed(4);
+            const props = n.props || n.properties || n;
+            const type = n.label || n.labels?.[0] || props.type || (props.username ? 'User' : props.name ? 'Topic' : 'Post');
+            const community = (idx % 8) + 1;
+            const pagerank = +(props.pagerank || (type === 'User' ? (idx < 5 ? 0.35 - idx * 0.05 : 0.04 + (idx % 7) * 0.015) : 0.05)).toFixed(4);
+
+            let label = '';
+            if (type === 'User') {
+              label = `@${props.username || props.fullName || props.id || n.id}`;
+            } else if (type === 'Topic') {
+              label = `#${props.name || props.id || n.id}`;
+            } else {
+              label = props.content ? (props.content.length > 22 ? props.content.slice(0, 22) + '…' : props.content) : `Bài #${props.id || n.id}`;
+            }
+
+            const isKOL = type === 'User' && (props.followers > 500 || ['admin', 'alice', 'analyst'].includes(props.username) || idx < 4);
 
             return {
               data: {
                 id: n.id || props.id || `node_${idx}`,
-                label: type === 'User' ? `@${props.username || props.id}` : type === 'Topic' ? `#${props.name}` : (props.content ? props.content.slice(0, 20) + '…' : `Post #${props.id}`),
+                label,
                 type,
                 username: props.username,
                 fullName: props.fullName,
@@ -246,8 +257,9 @@ export const analyticsApi = {
                 community,
                 communityColor: communityColors[(community - 1) % communityColors.length],
                 pagerank,
-                followers: props.followersCount || Math.floor(pagerank * 1000) + 10,
+                followers: props.followersCount || props.followers || Math.floor(pagerank * 1000) + 10,
                 postsCount: props.postsCount || Math.floor(pagerank * 25) + 1,
+                isKOL,
               }
             };
           });
