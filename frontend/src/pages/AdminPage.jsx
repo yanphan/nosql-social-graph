@@ -94,6 +94,8 @@ export default function AdminPage() {
   // Data States
   const [stats, setStats] = useState(null);
   const [usersList, setUsersList] = useState([]);
+  const [userPage, setUserPage] = useState(1);
+  const [userHasMore, setUserHasMore] = useState(false);
   const [topicsList, setTopicsList] = useState([]);
   const [postsList, setPostsList] = useState([]);
   const [backupsList, setBackupsList] = useState([]);
@@ -114,7 +116,6 @@ export default function AdminPage() {
     description: '',
   });
 
-
   // Load initial data
   useEffect(() => {
     loadAllData();
@@ -125,23 +126,40 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadAllData = async () => {
+  const loadAllData = async (targetPage = userPage) => {
     setLoading(true);
     try {
+      await adminApi.ensureAdminAuth();
       const [sData, uData, tData, pData, bData] = await Promise.all([
         adminApi.getStats(),
-        adminApi.getUsers({ limit: 50 }),
+        adminApi.getUsers({ page: targetPage, limit: 50 }),
         adminApi.getTopics(),
         adminApi.getPosts({ limit: 50 }),
         adminApi.getBackups(),
       ]);
       setStats(sData);
       setUsersList(uData.items || []);
+      setUserHasMore(Boolean(uData.hasMore));
       setTopicsList(tData || []);
       setPostsList(pData.items || []);
       setBackupsList(bData || []);
     } catch (err) {
       console.error('Error loading admin data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUserPageChange = async (newPage) => {
+    if (newPage < 1) return;
+    setUserPage(newPage);
+    setLoading(true);
+    try {
+      const uData = await adminApi.getUsers({ page: newPage, limit: 50 });
+      setUsersList(uData.items || []);
+      setUserHasMore(Boolean(uData.hasMore));
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -951,6 +969,31 @@ export default function AdminPage() {
                     })}
                   </tbody>
                 </table>
+
+                {/* Pagination Controls */}
+                <div className="p-3.5 bg-[#F8FAFC] border-t border-[#E5E9F0] flex items-center justify-between text-xs text-[#475569]">
+                  <div>
+                    Trang <span className="font-semibold text-[#0F172A] tabular-nums">{userPage}</span> • Đang hiển thị <span className="font-semibold text-[#0F172A] tabular-nums">{usersList.length}</span> / <span className="font-semibold text-[#0F172A] tabular-nums">{stats?.nodes?.User?.toLocaleString() || '10,000'}</span> người dùng
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={userPage <= 1 || loading}
+                      onClick={() => handleUserPageChange(userPage - 1)}
+                      className="h-8 px-3 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:bg-slate-50 hover:text-[#0F172A] disabled:opacity-40 disabled:pointer-events-none transition-colors btn-press shadow-2xs"
+                    >
+                      Trang trước
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!userHasMore || loading}
+                      onClick={() => handleUserPageChange(userPage + 1)}
+                      className="h-8 px-3 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:bg-slate-50 hover:text-[#0F172A] disabled:opacity-40 disabled:pointer-events-none transition-colors btn-press shadow-2xs"
+                    >
+                      Trang sau
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
