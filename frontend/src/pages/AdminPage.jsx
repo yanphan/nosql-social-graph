@@ -540,6 +540,447 @@ function AddUserModal({ isOpen, onClose, onSuccess, triggerRef }) {
   );
 }
 
+// Modal Chỉnh sửa người dùng hoàn chỉnh với Portal, Trap focus và Validate client-side
+function EditUserModal({ isOpen, user, onClose, onSuccess, triggerRef }) {
+  const [form, setForm] = useState({
+    fullName: '',
+    email: '',
+    bio: '',
+    country: '',
+    role: 'user',
+  });
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
+  const [apiError, setApiError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+
+  const modalRef = useRef(null);
+  const fullNameInputRef = useRef(null);
+  const roleDropdownRef = useRef(null);
+
+  // Điền dữ liệu ban đầu khi mở modal
+  useEffect(() => {
+    if (isOpen && user) {
+      document.body.style.overflow = 'hidden';
+      setForm({
+        fullName: user.fullName || '',
+        email: user.email || '',
+        bio: user.bio || '',
+        country: user.country || '',
+        role: user.role || 'user',
+      });
+      setErrors({});
+      setTouched({});
+      setApiError('');
+      setIsRoleDropdownOpen(false);
+
+      const timer = setTimeout(() => {
+        fullNameInputRef.current?.focus();
+      }, 50);
+      return () => {
+        clearTimeout(timer);
+        document.body.style.overflow = '';
+      };
+    } else {
+      document.body.style.overflow = '';
+    }
+  }, [isOpen, user]);
+
+  // Trap focus trong modal & bắt phím Escape
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClose();
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        const focusableElements = modalRef.current?.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusableElements || focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
+  // Đóng dropdown vai trò khi click ra ngoài dropdown
+  useEffect(() => {
+    const handleClickOutsideRole = (e) => {
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(e.target)) {
+        setIsRoleDropdownOpen(false);
+      }
+    };
+    if (isRoleDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutsideRole);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutsideRole);
+  }, [isRoleDropdownOpen]);
+
+  const handleClose = () => {
+    onClose();
+    setTimeout(() => {
+      triggerRef?.current?.focus();
+    }, 50);
+  };
+
+  const validateField = (name, value) => {
+    switch (name) {
+      case 'fullName': {
+        if (!value.trim()) return 'Họ và tên không được để trống';
+        return '';
+      }
+      case 'email': {
+        if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+          return 'Email không đúng định dạng';
+        }
+        return '';
+      }
+      case 'bio': {
+        if (value && value.length > 300) return 'Tiểu sử tối đa 300 ký tự';
+        return '';
+      }
+      case 'country': {
+        if (value && value.length > 50) return 'Tên quốc gia tối đa 50 ký tự';
+        return '';
+      }
+      default:
+        return '';
+    }
+  };
+
+  const handleChange = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+    setApiError('');
+    if (touched[field]) {
+      const err = validateField(field, value);
+      setErrors((prev) => ({ ...prev, [field]: err }));
+    }
+  };
+
+  const handleBlur = (field) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const err = validateField(field, form[field]);
+    setErrors((prev) => ({ ...prev, [field]: err }));
+  };
+
+  const fullNameErr = validateField('fullName', form.fullName);
+  const emailErr = validateField('email', form.email);
+  const bioErr = validateField('bio', form.bio);
+  const countryErr = validateField('country', form.country);
+  const isFormValid = !fullNameErr && !emailErr && !bioErr && !countryErr && form.fullName.trim();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setTouched({ fullName: true, email: true, bio: true, country: true });
+    if (!isFormValid || isSubmitting || !user) return;
+
+    setIsSubmitting(true);
+    setApiError('');
+    try {
+      const updateData = {
+        fullName: form.fullName.trim(),
+        email: form.email.trim(),
+        bio: form.bio.trim(),
+        country: form.country.trim(),
+      };
+      let updatedUser = await adminApi.updateUser(user.id, updateData);
+
+      // Nếu vai trò thay đổi, cập nhật role
+      if (form.role !== user.role) {
+        const roleRes = await adminApi.setUserRole(user.id, form.role);
+        updatedUser = { ...updatedUser, role: roleRes.role || form.role };
+      }
+
+      onSuccess({ ...user, ...updatedUser });
+      handleClose();
+    } catch (err) {
+      setApiError(err.message || 'Lỗi khi cập nhật thông tin người dùng');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen || !user) return null;
+
+  return createPortal(
+    <div
+      style={{ backgroundColor: 'rgba(15, 23, 42, 0.5)' }}
+      className="fixed inset-0 z-[999] flex items-center justify-center p-4 backdrop-blur-xs transition-opacity duration-150"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          handleClose();
+        }
+      }}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-user-modal-title"
+        className="bg-white border border-[#E5E9F0] rounded-[16px] p-6 max-w-md w-full max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150"
+      >
+        {/* Header Modal */}
+        <div className="flex items-center justify-between border-b border-[#E5E9F0] pb-3">
+          <div>
+            <h3 id="edit-user-modal-title" className="font-semibold text-base text-[#0F172A]">
+              Chỉnh sửa người dùng
+            </h3>
+            <p className="text-xs text-[#64748B] mt-0.5">
+              Cập nhật thông tin tài khoản và vai trò trong hệ thống
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="text-[#64748B] hover:text-[#0F172A] p-1 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1"
+            aria-label="Đóng hộp thoại"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Thông tin tài khoản cố định */}
+        <div className="flex items-center gap-3 p-3 bg-[#F8FAFC] border border-[#E5E9F0] rounded-[12px]">
+          <img
+            src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`}
+            alt={user.fullName}
+            className="w-10 h-10 rounded-full object-cover bg-white ring-2 ring-white border border-[#E5E9F0] shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-xs text-[#0F172A] truncate">
+                @{user.username}
+              </span>
+              <span className="text-[10px] text-[#64748B] bg-white border border-[#E5E9F0] px-1.5 py-0.5 rounded font-mono truncate max-w-[120px]">
+                {user.id}
+              </span>
+            </div>
+            <div className="text-[11px] text-[#64748B] mt-0.5 flex items-center gap-2">
+              <span>Trạng thái:</span>
+              <span className={`font-medium ${user.status === 'locked' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                {user.status === 'locked' ? 'Đã khóa' : 'Đang hoạt động'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Thông báo lỗi từ API nếu có */}
+        {apiError && (
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-[10px] flex items-center gap-2">
+            <span className="font-semibold">Lỗi:</span>
+            <span>{apiError}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3.5 text-[13px]">
+          {/* Ô Họ và tên */}
+          <div>
+            <label className="text-xs font-medium text-[#475569] block mb-1">
+              Họ và tên <span className="text-red-500">*</span>
+            </label>
+            <input
+              ref={fullNameInputRef}
+              type="text"
+              value={form.fullName}
+              onChange={(e) => handleChange('fullName', e.target.value)}
+              onBlur={() => handleBlur('fullName')}
+              placeholder="vd: Nguyễn Văn A"
+              className={`w-full h-9 px-3 bg-white border rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 ${
+                touched.fullName && errors.fullName
+                  ? 'border-red-500 focus:border-red-500 focus:ring-red-300'
+                  : 'border-[#E5E9F0] focus:border-[#2563EB]'
+              }`}
+            />
+            {touched.fullName && errors.fullName && (
+              <p className="text-xs text-red-600 mt-1">{errors.fullName}</p>
+            )}
+          </div>
+
+          {/* Ô Email & Quốc gia (2 cột) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-[#475569] block mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => handleChange('email', e.target.value)}
+                onBlur={() => handleBlur('email')}
+                placeholder="vd: user@example.com"
+                className={`w-full h-9 px-3 bg-white border rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 ${
+                  touched.email && errors.email
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-300'
+                    : 'border-[#E5E9F0] focus:border-[#2563EB]'
+                }`}
+              />
+              {touched.email && errors.email && (
+                <p className="text-xs text-red-600 mt-1">{errors.email}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-[#475569] block mb-1">
+                Quốc gia
+              </label>
+              <input
+                type="text"
+                value={form.country}
+                onChange={(e) => handleChange('country', e.target.value)}
+                onBlur={() => handleBlur('country')}
+                placeholder="vd: Việt Nam"
+                className={`w-full h-9 px-3 bg-white border rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 ${
+                  touched.country && errors.country
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-300'
+                    : 'border-[#E5E9F0] focus:border-[#2563EB]'
+                }`}
+              />
+              {touched.country && errors.country && (
+                <p className="text-xs text-red-600 mt-1">{errors.country}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Dropdown Vai trò */}
+          <div className="relative" ref={roleDropdownRef}>
+            <label className="text-xs font-medium text-[#475569] block mb-1">
+              Vai trò
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+              className="w-full h-9 px-3 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 transition-colors"
+            >
+              <span>
+                {form.role === 'admin'
+                  ? 'Quản trị viên (Admin)'
+                  : form.role === 'analyst'
+                  ? 'Nhà phân tích (Analyst)'
+                  : 'Thành viên (User)'}
+              </span>
+              <ChevronDown className={`h-4 w-4 text-[#64748B] transition-transform ${isRoleDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isRoleDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E5E9F0] rounded-[10px] shadow-lg z-20 py-1 text-xs divide-y divide-[#E5E9F0]/60 animate-in fade-in zoom-in-95 duration-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm((prev) => ({ ...prev, role: 'user' }));
+                    setIsRoleDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 hover:bg-[#F1F5F9] transition-colors flex items-center justify-between ${
+                    form.role === 'user' ? 'text-[#2563EB] font-medium bg-[#EFF4FF]' : 'text-[#0F172A]'
+                  }`}
+                >
+                  <span>Thành viên (User)</span>
+                  {form.role === 'user' && <Check className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm((prev) => ({ ...prev, role: 'analyst' }));
+                    setIsRoleDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 hover:bg-[#F1F5F9] transition-colors flex items-center justify-between ${
+                    form.role === 'analyst' ? 'text-[#2563EB] font-medium bg-[#EFF4FF]' : 'text-[#0F172A]'
+                  }`}
+                >
+                  <span>Nhà phân tích (Analyst)</span>
+                  {form.role === 'analyst' && <Check className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm((prev) => ({ ...prev, role: 'admin' }));
+                    setIsRoleDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 hover:bg-[#F1F5F9] transition-colors flex items-center justify-between ${
+                    form.role === 'admin' ? 'text-[#2563EB] font-medium bg-[#EFF4FF]' : 'text-[#0F172A]'
+                  }`}
+                >
+                  <span>Quản trị viên (Admin)</span>
+                  {form.role === 'admin' && <Check className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Ô Tiểu sử */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-[#475569]">
+                Tiểu sử
+              </label>
+              <span className="text-[11px] text-[#64748B]">
+                {form.bio?.length || 0}/300
+              </span>
+            </div>
+            <textarea
+              rows={3}
+              value={form.bio}
+              onChange={(e) => handleChange('bio', e.target.value)}
+              onBlur={() => handleBlur('bio')}
+              placeholder="Giới thiệu tóm tắt về người dùng..."
+              maxLength={300}
+              className={`w-full p-2.5 bg-white border rounded-[10px] text-xs text-[#0F172A] placeholder:text-[#94A3B8] transition-colors resize-none focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 ${
+                touched.bio && errors.bio
+                  ? 'border-red-500 focus:border-red-500 focus:ring-red-300'
+                  : 'border-[#E5E9F0] focus:border-[#2563EB]'
+              }`}
+            />
+            {touched.bio && errors.bio && (
+              <p className="text-xs text-red-600 mt-1">{errors.bio}</p>
+            )}
+          </div>
+
+          {/* Nút bấm hành động */}
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E9F0]">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="h-9 px-4 rounded-[10px] border border-[#CBD5E1] bg-white text-[#334155] hover:bg-[#F8FAFC] font-medium text-xs transition-colors btn-press focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              disabled={!isFormValid || isSubmitting}
+              className="h-9 px-4 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium text-xs flex items-center gap-1.5 transition-colors btn-press shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1"
+            >
+              {isSubmitting && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              <span>{isSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function AdminPage() {
   const navigate = useNavigate();
   const [currentUser] = useState(() => authService.getStoredUser());
@@ -612,6 +1053,10 @@ export default function AdminPage() {
   // Modals state
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const addUserTriggerRef = useRef(null);
+
+  const [editingUser, setEditingUser] = useState(null);
+  const [isEditUserOpen, setIsEditUserOpen] = useState(false);
+  const editUserTriggerRef = useRef(null);
 
   const [isAddTopicOpen, setIsAddTopicOpen] = useState(false);
   const [newTopicForm, setNewTopicForm] = useState({
@@ -739,18 +1184,9 @@ export default function AdminPage() {
     }
   };
 
-  const handleEditUser = async (user) => {
-    const newName = window.prompt(`Cập nhật họ và tên cho @${user.username}:`, user.fullName);
-    if (!newName || !newName.trim()) return;
-    try {
-      await adminApi.updateUser(user.id, { fullName: newName.trim() });
-      setUsersList((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, fullName: newName.trim() } : u))
-      );
-      showToast(`Đã cập nhật thông tin @${user.username}`);
-    } catch (err) {
-      showToast(err.message || 'Lỗi khi cập nhật thông tin', 'error');
-    }
+  const handleEditUser = (user) => {
+    setEditingUser(user);
+    setIsEditUserOpen(true);
   };
 
   // Topic Actions
@@ -1397,6 +1833,24 @@ export default function AdminPage() {
                   loadAllData();
                 }}
                 triggerRef={addUserTriggerRef}
+              />
+
+              {/* Modal Chỉnh Sửa Người Dùng bằng Portal */}
+              <EditUserModal
+                isOpen={isEditUserOpen}
+                user={editingUser}
+                onClose={() => {
+                  setIsEditUserOpen(false);
+                  setEditingUser(null);
+                }}
+                onSuccess={(updated) => {
+                  setUsersList((prev) =>
+                    prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u))
+                  );
+                  showToast(`Đã cập nhật thông tin @${updated.username || editingUser?.username}`);
+                  loadAllData();
+                }}
+                triggerRef={editUserTriggerRef}
               />
 
               {/* Table User (Headers: Sentence Case 13px/500, Status: Soft Chip, Lock: Clear Action Button) */}

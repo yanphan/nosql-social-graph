@@ -112,6 +112,19 @@ export const adminApi = {
     return { id: userId, status };
   },
 
+  setUserRole: async (userId, role) => {
+    try {
+      await ensureAdminAuth();
+      const res = await api.patch(`/users/${userId}/role`, { role });
+      if (res.data?.ok) return res.data.data;
+    } catch (err) {
+      console.warn('API set role error, fallback mock:', err.message);
+    }
+    const u = mockUsers.find((x) => x.id === userId);
+    if (u) u.role = role;
+    return { id: userId, role };
+  },
+
   deleteUser: async (userId) => {
     try {
       await ensureAdminAuth();
