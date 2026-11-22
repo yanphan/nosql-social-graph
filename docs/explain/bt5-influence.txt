@@ -1,0 +1,26 @@
+======================================================================
+QUERY: BT5-INFLUENCE
+======================================================================
+CYPHER:
+MATCH (u:User)<-[:FOLLOWS]-(f:User) RETURN u.id AS id, u.username AS username, count(f) AS followers ORDER BY followers DESC LIMIT 10
+
+----------------------------------------------------------------------
+GRAPH.EXPLAIN (Execution Plan):
+----------------------------------------------------------------------
+Results
+    Limit
+        Sort
+            Aggregate
+                Conditional Traverse | (f)->(u:User)
+                    Node By Label Scan | (f:User)
+
+----------------------------------------------------------------------
+GRAPH.PROFILE (Execution Metrics & Profiling):
+----------------------------------------------------------------------
+Results | Records produced: 10, Execution time: 0.001936 ms
+    Limit | Records produced: 10, Execution time: 0.002469 ms
+        Sort | Records produced: 10, Execution time: 1.287906 ms
+            Aggregate | Records produced: 9973, Execution time: 104.805231 ms
+                Conditional Traverse | (f)->(u:User) | Records produced: 200000, Execution time: 29.698823 ms
+                    Node By Label Scan | (f:User) | Records produced: 10000, Execution time: 0.498394 ms
+======================================================================

@@ -91,6 +91,15 @@ export async function remove(id) {
   return true;
 }
 
+export async function adminList({ q = '', topic = '', skip = 0, limit = 20 } = {}) {
+  const params = { q: q.toLowerCase(), topic, skip, limit };
+  const [rows, countRows] = await Promise.all([read(posts.adminList, params), read(posts.adminCount, params)]);
+  return {
+    items: rows.map(formatPostRow).filter(Boolean),
+    total: Number(countRows[0]?.total ?? 0),
+  };
+}
+
 export async function search(q, limit = 10) {
   const rows = await read(posts.search, { q, limit });
   return rows.map((r) => {

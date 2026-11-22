@@ -7,7 +7,8 @@ export function errorHandler(err, _req, res, _next) {
     ok: false,
     error: {
       code: err.code ?? 'INTERNAL',
-      message: status === 500 ? 'Lỗi hệ thống' : err.message,
+      // Lỗi 500 ẩn chi tiết, trừ lỗi đã soạn sẵn cho người dùng (expose), ví dụ phục hồi thất bại
+      message: status === 500 && !err.expose ? 'Lỗi hệ thống' : err.message,
     },
   });
 }

@@ -19,6 +19,11 @@ export async function createApp() {
     morgan('dev')
   );
 
+  // Root route: Tự động chuyển hướng sang giao diện Frontend (port 5173)
+  app.get('/', (_req, res) => {
+    res.redirect('http://localhost:5173');
+  });
+
   // Health check endpoint
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, data: { db: 'up', graph: env.db.graph } });
@@ -32,10 +37,13 @@ export async function createApp() {
 
   // Tự động nạp mọi routes/*.routes.js
   const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'routes');
+  // Audit gắn một lần cho cả /api. Trước đây gắn theo từng router: các router prefix '/' (analytics, topics)
+  // khớp mọi /api/* nên một request bị ghi 2-3 lần.
+  app.use('/api', audit);
   if (fs.existsSync(dir)) {
     for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.routes.js'))) {
       const m = await import(pathToFileURL(path.join(dir, f)).href);
-      app.use('/api' + (m.prefix ?? '/'), audit, m.default);
+      app.use('/api' + (m.prefix ?? '/'), m.default);
     }
   }
 

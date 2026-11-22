@@ -1,4 +1,4 @@
-import { read } from '../../backend/src/db/graph.js';
+import { connectDb, read, closeDb } from '../../backend/src/db/graph.js';
 import { admin } from '../../backend/src/queries/admin.js';
 
 export const CHECK_LABELS = {
@@ -18,16 +18,48 @@ export async function runChecks(now = Date.now()) {
   const results = [];
 
   for (const key of checkKeys) {
-    const cypher = admin.integrity[key];
-    const rows = await read(cypher, { now });
-    const count = Number(rows[0]?.c ?? 0);
-    results.push({
-      key,
-      name: CHECK_LABELS[key] || key,
-      count,
-      ok: count === 0,
-    });
+    try {
+      const cypher = admin.integrity[key];
+      const rows = await read(cypher, { now });
+      const count = Number(rows[0]?.c ?? 0);
+      results.push({
+        key,
+        name: CHECK_LABELS[key] || key,
+        count,
+        ok: count === 0,
+      });
+    } catch (err) {
+      results.push({
+        key,
+        name: CHECK_LABELS[key] || key,
+        count: -1,
+        ok: false,
+        error: err.message,
+      });
+    }
   }
 
   return results;
+}
+
+// CLI runner if executed directly
+if (process.argv[1] && process.argv[1].endsWith('integrity.js')) {
+  try {
+    await connectDb();
+    console.log('--- Running 9 Integrity Checks ---');
+    const results = await runChecks();
+    let allOk = true;
+    for (const r of results) {
+      const status = r.ok ? '✅ PASS' : `❌ FAIL (${r.count} violations)`;
+      console.log(`  ${r.name.padEnd(45)}: ${status}`);
+      if (!r.ok) allOk = false;
+    }
+    console.log('-----------------------------------');
+    console.log(allOk ? 'All checks PASSED (100% Green)!' : 'Some checks FAILED.');
+    await closeDb();
+    process.exit(allOk ? 0 : 1);
+  } catch (err) {
+    console.error('Integrity check error:', err);
+    process.exit(1);
+  }
 }

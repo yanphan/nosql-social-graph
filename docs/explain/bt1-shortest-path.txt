@@ -1,0 +1,26 @@
+======================================================================
+QUERY: BT1-SHORTEST-PATH
+======================================================================
+CYPHER:
+MATCH (a:User {username:'admin'}), (b:User {username:'alice'}) WITH shortestPath((a)-[:FOLLOWS*..6]->(b)) AS p RETURN nodes(p), relationships(p), length(p)
+
+----------------------------------------------------------------------
+GRAPH.EXPLAIN (Execution Plan):
+----------------------------------------------------------------------
+Results
+    Project
+        Project
+            Cartesian Product
+                Node By Index Scan | (a:User)
+                Node By Index Scan | (b:User)
+
+----------------------------------------------------------------------
+GRAPH.PROFILE (Execution Metrics & Profiling):
+----------------------------------------------------------------------
+Results | Records produced: 1, Execution time: 0.000643 ms
+    Project | Records produced: 1, Execution time: 0.002961 ms
+        Project | Records produced: 1, Execution time: 1.407669 ms
+            Cartesian Product | Records produced: 1, Execution time: 0.001131 ms
+                Node By Index Scan | (a:User) | Records produced: 1, Execution time: 0.025285 ms
+                Node By Index Scan | (b:User) | Records produced: 1, Execution time: 0.018156 ms
+======================================================================

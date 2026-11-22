@@ -78,10 +78,27 @@ export async function updateTopic(id, { name, description }) {
   };
 }
 
+// Mức ảnh hưởng nếu xóa chủ đề (hiển thị trong hộp xác nhận của admin)
+export async function getTopicImpact(id) {
+  const existing = await topicsRepo.findById(id);
+  if (!existing) {
+    throw new NotFound('Chủ đề không tồn tại');
+  }
+  return { id, name: existing.name, ...(await topicsRepo.impact(id)) };
+}
+
 export async function deleteTopic(id) {
   const existing = await topicsRepo.findById(id);
   if (!existing) {
     throw new NotFound('Chủ đề không tồn tại');
+  }
+
+  // Mọi bài viết phải còn ít nhất 1 chủ đề (ràng buộc toàn vẹn ABOUT)
+  const { orphanPosts } = await topicsRepo.impact(id);
+  if (orphanPosts > 0) {
+    throw new Conflict(
+      `Không thể xóa: ${orphanPosts} bài viết chỉ gắn chủ đề #${existing.name} và sẽ không còn chủ đề nào`
+    );
   }
 
   await topicsRepo.remove(id);
@@ -124,4 +141,8 @@ export async function setInterests(userId, items) {
 
   const count = await topicsRepo.setInterests(userId, items);
   return { updated: count };
+}
+
+export async function getUserInterests(userId) {
+  return await topicsRepo.getUserInterests(userId);
 }

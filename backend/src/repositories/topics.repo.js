@@ -42,17 +42,39 @@ export async function setInterests(uid, items) {
   return items.length;
 }
 
+export async function getUserInterests(uid) {
+  const rows = await read(topics.userInterests, { uid });
+  return rows.map((r) => {
+    const props = toProps(r, 't');
+    return {
+      ...props,
+      score: Number(r.score ?? 0),
+      postCount: Number(r.postCount ?? 0),
+    };
+  });
+}
+
 export async function search(q, limit = 10) {
   const rows = await read(topics.search, { q, limit });
   return rows.map((r) => toProps(r, 't'));
 }
 
 export async function findById(id) {
-  const rows = await read('MATCH (t:Topic {id:$id}) RETURN t', { id });
+  const rows = await read(topics.findById, { id });
   return toProps(rows[0], 't');
 }
 
 export async function findByName(name) {
-  const rows = await read('MATCH (t:Topic {name:$name}) RETURN t', { name });
+  const rows = await read(topics.findByName, { name });
   return toProps(rows[0], 't');
+}
+
+export async function impact(id) {
+  const rows = await read(topics.impact, { id });
+  const r = rows[0] ?? {};
+  return {
+    posts: Number(r.posts ?? 0),
+    orphanPosts: Number(r.orphanPosts ?? 0),
+    interested: Number(r.interested ?? 0),
+  };
 }

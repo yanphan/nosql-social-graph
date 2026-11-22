@@ -49,13 +49,14 @@ const constraints = [
 ];
 
 console.log('--- Creating Constraints ---');
+const conn = await client.connection;
 for (const cmd of constraints) {
   try {
-    if (typeof client.sendCommand === 'function') {
-      await client.sendCommand(cmd);
-      console.log(`[OK] ${cmd.join(' ')}`);
+    if (conn && typeof conn.sendCommand === 'function') {
+      const res = await conn.sendCommand(cmd);
+      console.log(`[OK] ${cmd.join(' ')} -> ${res}`);
     } else {
-      console.log(`[SKIP] client.sendCommand not directly supported; skipping constraint: ${cmd.join(' ')}`);
+      console.log(`[SKIP] sendCommand not supported; skipping constraint: ${cmd.join(' ')}`);
     }
   } catch (err) {
     console.warn(`[WARN] ${cmd.join(' ')} -> ${err.message}`);

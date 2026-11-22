@@ -1211,16 +1211,16 @@ Tài khoản demo luôn tồn tại (mật khẩu `Passw0rd!`): `admin` (admin),
 
 | Mục | Cần kiểm tra | Phương án dự phòng | Kết quả |
 | --- | --- | --- | --- |
-| Đường dẫn volume dữ liệu | `redis-cli CONFIG GET dir` | Sửa mount trong compose | Điền sau |
-| Browser đi kèm image, cổng 3000 | Mở `http://localhost:3000`, đăng nhập | Thêm service `falkordb-browser` riêng | Điền sau |
-| Tên field của node/edge trong client Node (`labels`, `properties`, `relationshipType`, `sourceId`, `destinationId`) | In thử một kết quả `MATCH (a)-[r]->(b) RETURN a,r,b LIMIT 1` | Chỉ sửa `db/graphMapper.js` | Điền sau |
-| Cú pháp `GRAPH.CONSTRAINT CREATE ... UNIQUE` và gọi qua client (`getClient().sendCommand([...])` hoặc API riêng) | Chạy trên Browser/redis-cli | Chỉ dùng `MERGE` + kiểm tra ở service | Điền sau |
-| `shortestPath((a)-[:FOLLOWS*..N]->(b))`, `nodes(p)`, `relationships(p)` | Chạy BT1 | Dùng `algo.BFS` hoặc BFS ở backend | Điền sau |
-| `algo.pageRank('User','FOLLOWS')` | Chạy thử | `utils/graphAlgos.js` (power iteration, d=0,85, 20 vòng) | Điền sau |
-| `algo.WCC(...)` / thuật toán cộng đồng | Chạy thử | Label propagation ở backend trên `allFollowEdges` | Điền sau |
-| Pattern predicate `NOT (me)-[:FOLLOWS]->(c)` trong `WHERE` | Chạy BT3 | Thay bằng `OPTIONAL MATCH` + `WHERE x IS NULL` | Điền sau |
-| `toLower`, `CONTAINS`, `coalesce`, `properties(n)`, `labels(n)[0]`, `UNWIND` + `MATCH` | Chạy từng câu ở mục 4 | Sửa `queries/*` | Điền sau |
-| Ghi nhận phiên bản FalkorDB, Node, Docker, cấu hình máy (RAM/CPU) | `GRAPH.INFO`/`INFO server` | — | Điền sau |
+| Đường dẫn volume dữ liệu | `redis-cli CONFIG GET dir` | Sửa mount trong compose | `/var/lib/falkordb/data` (Khớp `falkordb_data`) |
+| Browser đi kèm image, cổng 3000 | Mở `http://localhost:3000`, đăng nhập | Thêm service `falkordb-browser` riêng | Hoạt động tốt (`:3000`, HTTP 200) |
+| Tên field của node/edge trong client Node (`labels`, `properties`, `relationshipType`, `sourceId`, `destinationId`) | In thử một kết quả `MATCH (a)-[r]->(b) RETURN a,r,b LIMIT 1` | Chỉ sửa `db/graphMapper.js` | Khớp chuẩn: `labels`, `properties`, `relationshipType`, `sourceId`, `destinationId` |
+| Cú pháp `GRAPH.CONSTRAINT CREATE ... UNIQUE` và gọi qua client (`getClient().sendCommand([...])` hoặc API riêng) | Chạy trên Browser/redis-cli | Chỉ dùng `MERGE` + kiểm tra ở service | Hỗ trợ tốt qua `(await client.connection).sendCommand(...)` |
+| `shortestPath((a)-[:FOLLOWS*..N]->(b))`, `nodes(p)`, `relationships(p)` | Chạy BT1 | Dùng `algo.BFS` hoặc BFS ở backend | Hỗ trợ tốt dạng `WITH shortestPath(...) AS p RETURN nodes(p), relationships(p), length(p)` |
+| `algo.pageRank('User','FOLLOWS')` | Chạy thử | `utils/graphAlgos.js` (power iteration, d=0,85, 20 vòng) | Hỗ trợ Native: `CALL algo.pageRank('User','FOLLOWS') YIELD node, score` |
+| `algo.WCC(...)` / thuật toán cộng đồng | Chạy thử | Label propagation ở backend trên `allFollowEdges` | Hỗ trợ Native: `CALL algo.WCC({nodeLabels:['User'], relationshipTypes:['FOLLOWS']})` |
+| Pattern predicate `NOT (me)-[:FOLLOWS]->(c)` trong `WHERE` | Chạy BT3 | Thay bằng `OPTIONAL MATCH` + `WHERE x IS NULL` | Hỗ trợ Native tốt trong `WHERE` |
+| `toLower`, `CONTAINS`, `coalesce`, `properties(n)`, `labels(n)[0]`, `UNWIND` + `MATCH` | Chạy từng câu ở mục 4 | Sửa `queries/*` | Hoạt động 100% bình thường |
+| Ghi nhận phiên bản FalkorDB, Node, Docker, cấu hình máy (RAM/CPU) | `GRAPH.INFO`/`INFO server` | — | FalkorDB 4.22.1 (Redis 8.10.2), Node v22.20.0, Docker Desktop |
 
 ---
 
