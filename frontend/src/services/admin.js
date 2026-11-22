@@ -31,26 +31,11 @@ async function blobErrorMessage(err, fallback) {
 }
 
 export const adminApi = {
-  // 1. Thống kê tổng quan (UC-16)
-  getStats: async () => {
-    try {
-      const res = await api.get('/stats');
-      if (res.data?.ok && res.data?.data) {
-        return res.data.data;
-      }
-    } catch (err) {
-      console.warn('API /stats error, fallback mock:', err.message);
-    }
-    // Mock fallback
-    return {
-      totalNodes: 40050,
-      totalEdges: 386500,
-      nodes: { User: 10000, Post: 30000, Topic: 50 },
-      edges: { FOLLOWS: 150000, POSTED: 30000, ABOUT: 60000, LIKED: 90000, COMMENTED: 22500, SHARED: 9000, INTERESTED_IN: 25000 },
-      scale: 'DEFAULT',
-      degreeBuckets: [],
-    };
-  },
+  // 1. Tổng quan (UC-16). Không có dữ liệu giả khi lỗi: admin phải biết là số liệu chưa tải được.
+  getOverview: () => mutate(() => api.get('/admin/overview'), 'Không tải được số liệu tổng quan'),
+
+  // 9 phép kiểm tra toàn vẹn dữ liệu đồ thị: { checks: [{ key, name, count, ok, error? }] }
+  getIntegrity: () => mutate(() => api.get('/admin/integrity'), 'Không chạy được kiểm tra toàn vẹn'),
 
   // 2. Quản lý Người dùng (UC-05). Danh sách admin không dùng dữ liệu mock: lỗi phải hiện ra,
   // không thì admin sẽ khóa/xóa nhầm những tài khoản không tồn tại.

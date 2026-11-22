@@ -48,6 +48,53 @@ export async function stats() {
   };
 }
 
+const DAY = 86_400_000;
+const num = (v) => Number(v ?? 0);
+
+/**
+ * Số liệu cho trang tổng quan của admin.
+ * @param {number} now mốc thời gian hiện tại (ms)
+ * @param {number} from 0 giờ của ngày đầu tiên trong biểu đồ hoạt động (ms)
+ * @param {number} days số ngày của biểu đồ
+ */
+export async function overview({ now, from, days }) {
+  const p = { week: now - 7 * DAY, prevWeek: now - 14 * DAY, from, day: DAY };
+  const q = admin.overview;
+  const [[u = {}], [po = {}], du, dp, di, [et = {}], edgesRows] = await Promise.all([
+    read(q.users, p),
+    read(q.posts, p),
+    read(q.dailyUsers, p),
+    read(q.dailyPosts, p),
+    read(q.dailyInteractions, p),
+    read(q.emptyTopics),
+    read(admin.countByType),
+  ]);
+
+  // Gộp ba chuỗi theo ngày; ngày không có dữ liệu = 0
+  const series = Array.from({ length: days }, (_, i) => ({ date: from + i * DAY, users: 0, posts: 0, interactions: 0 }));
+  const fill = (rows, key) => {
+    for (const r of rows) {
+      const i = num(r.d);
+      if (i >= 0 && i < days) series[i][key] = num(r.c);
+    }
+  };
+  fill(du, 'users');
+  fill(dp, 'posts');
+  fill(di, 'interactions');
+
+  const edges = {};
+  for (const r of edgesRows) if (r.type) edges[r.type] = num(r.c);
+
+  return {
+    users: { total: num(u.total), locked: num(u.locked), admins: num(u.admins), newWeek: num(u.newWeek), newPrevWeek: num(u.newPrevWeek) },
+    posts: { total: num(po.total), newWeek: num(po.newWeek), newPrevWeek: num(po.newPrevWeek) },
+    edges,
+    totalEdges: Object.values(edges).reduce((a, b) => a + b, 0),
+    emptyTopics: { count: num(et.c), names: et.names ?? [] },
+    activity: series,
+  };
+}
+
 export async function degreeBuckets() {
   const rows = await read(admin.degreeBuckets);
   return rows.map((r) => ({

@@ -9,6 +9,8 @@ import { read } from '../db/graph.js';
 import { admin as adminQueries } from '../queries/index.js';
 import { AppError, Invalid, NotFound, Conflict } from '../utils/errors.js';
 import { appCache } from '../utils/cache.js';
+import * as adminRepo from '../repositories/admin.repo.js';
+import * as moderationRepo from '../repositories/moderation.repo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AUDIT_FILE = path.resolve(__dirname, '../../data/audit.ndjson');
@@ -147,6 +149,45 @@ export async function restoreGraph({ file }) {
     appCache.clear();
     throw mapLibError(err);
   }
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Trang tổng quan: số liệu chính, việc cần chú ý (tài khoản bị khóa, nội dung bị gỡ,
+ * chủ đề trống), hoạt động theo ngày, bản sao lưu gần nhất, phân bố số người theo dõi.
+ */
+export async function getOverview({ days = 30 } = {}) {
+  const now = Date.now();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  // Chỉ các ngày đã trọn vẹn (đến hết hôm qua): hôm nay chưa hết ngày, số liệu thấp giả tạo
+  const from = start.getTime() - days * DAY_MS;
+
+  const [graph, degree, modLog, backups] = await Promise.all([
+    adminRepo.overview({ now, from, days }),
+    adminRepo.degreeBuckets(),
+    moderationRepo.list({ limit: 1000 }),
+    backup.listBackups(),
+  ]);
+
+  const week = now - 7 * DAY_MS;
+  const recent = modLog.filter((m) => Number(m.at) >= week);
+  const last = backups[0];
+
+  return {
+    generatedAt: now,
+    ...graph,
+    moderation: {
+      postsRemovedWeek: recent.filter((m) => m.action === 'remove_post').length,
+      commentsRemovedWeek: recent.filter((m) => m.action === 'remove_comment').length,
+    },
+    backups: {
+      count: backups.length,
+      last: last ? publicBackup(last) : null,
+    },
+    degreeBuckets: degree,
+  };
 }
 
 export async function getIntegrity() {
