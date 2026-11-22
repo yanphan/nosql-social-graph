@@ -1,5 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { EditTopicModal, DeleteTopicModal } from '@/components/admin/TopicModals';
+import { ConfirmUserActionModal, ResetPasswordModal } from '@/components/admin/UserModals';
+import PostsPanel from '@/components/admin/PostsPanel';
+import SystemPanel from '@/components/admin/SystemPanel';
+import DashboardPanel from '@/components/admin/DashboardPanel';
+import {
+  useDebounced,
+  usePagedList,
+  SearchBox,
+  FilterSelect,
+  Pager,
+  TableStatusRow,
+} from '@/components/admin/listing';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -15,7 +28,6 @@ import {
   RefreshCw,
   CheckCircle2,
   ExternalLink,
-  ArrowLeft,
   ChevronDown,
   X,
   FileText,
@@ -26,7 +38,8 @@ import {
   KeyRound,
   MoreHorizontal,
   Edit,
-  Check
+  Check,
+  AlertCircle
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -463,8 +476,6 @@ function AddUserModal({ isOpen, onClose, onSuccess, triggerRef }) {
               <span>
                 {form.role === 'admin'
                   ? 'Quản trị viên'
-                  : form.role === 'analyst'
-                  ? 'Nhà phân tích'
                   : 'Thành viên'}
               </span>
               <ChevronDown className={`h-4 w-4 text-[#64748B] transition-transform ${isRoleDropdownOpen ? 'rotate-180' : ''}`} />
@@ -484,19 +495,6 @@ function AddUserModal({ isOpen, onClose, onSuccess, triggerRef }) {
                 >
                   <span>Thành viên</span>
                   {form.role === 'user' && <Check className="h-3.5 w-3.5" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setForm((prev) => ({ ...prev, role: 'analyst' }));
-                    setIsRoleDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 hover:bg-[#F1F5F9] transition-colors flex items-center justify-between ${
-                    form.role === 'analyst' ? 'text-[#2563EB] font-medium bg-[#EFF4FF]' : 'text-[#0F172A]'
-                  }`}
-                >
-                  <span>Nhà phân tích</span>
-                  {form.role === 'analyst' && <Check className="h-3.5 w-3.5" />}
                 </button>
                 <button
                   type="button"
@@ -722,6 +720,9 @@ function EditUserModal({ isOpen, user, onClose, onSuccess, triggerRef }) {
     }
   };
 
+  // Không cho tự gỡ quyền quản trị của chính mình (backend cũng chặn)
+  const isSelfEdit = user?.id === authService.getStoredUser()?.id;
+
   if (!isOpen || !user) return null;
 
   return createPortal(
@@ -871,17 +872,22 @@ function EditUserModal({ isOpen, user, onClose, onSuccess, triggerRef }) {
             <button
               type="button"
               onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
-              className="w-full h-9 px-3 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 transition-colors"
+              disabled={isSelfEdit}
+              aria-describedby={isSelfEdit ? 'edit-role-self-hint' : undefined}
+              className="w-full h-9 px-3 bg-white border border-[#E5E9F0] rounded-[10px] text-xs text-[#0F172A] flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 transition-colors disabled:bg-[#F8FAFC] disabled:text-[#475569] disabled:cursor-not-allowed"
             >
               <span>
                 {form.role === 'admin'
                   ? 'Quản trị viên (Admin)'
-                  : form.role === 'analyst'
-                  ? 'Nhà phân tích (Analyst)'
                   : 'Thành viên (User)'}
               </span>
               <ChevronDown className={`h-4 w-4 text-[#64748B] transition-transform ${isRoleDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
+            {isSelfEdit && (
+              <p id="edit-role-self-hint" className="mt-1 text-[11px] text-[#475569]">
+                Bạn không thể tự đổi vai trò của chính mình.
+              </p>
+            )}
 
             {isRoleDropdownOpen && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E5E9F0] rounded-[10px] shadow-lg z-20 py-1 text-xs divide-y divide-[#E5E9F0]/60 animate-in fade-in zoom-in-95 duration-100">
@@ -897,19 +903,6 @@ function EditUserModal({ isOpen, user, onClose, onSuccess, triggerRef }) {
                 >
                   <span>Thành viên (User)</span>
                   {form.role === 'user' && <Check className="h-3.5 w-3.5" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setForm((prev) => ({ ...prev, role: 'analyst' }));
-                    setIsRoleDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 hover:bg-[#F1F5F9] transition-colors flex items-center justify-between ${
-                    form.role === 'analyst' ? 'text-[#2563EB] font-medium bg-[#EFF4FF]' : 'text-[#0F172A]'
-                  }`}
-                >
-                  <span>Nhà phân tích (Analyst)</span>
-                  {form.role === 'analyst' && <Check className="h-3.5 w-3.5" />}
                 </button>
                 <button
                   type="button"
@@ -981,6 +974,25 @@ function EditUserModal({ isOpen, user, onClose, onSuccess, triggerRef }) {
   );
 }
 
+const USERS_PER_PAGE = 10;
+const TOPICS_PER_PAGE = 10;
+const TOPIC_SORT_OPTIONS = [
+  { value: 'posts', label: 'Nhiều bài viết nhất' },
+  { value: 'fewest', label: 'Ít bài viết nhất' },
+  { value: 'name', label: 'Tên A–Z' },
+];
+const fetchAdminUsers = (query, signal) => adminApi.getUsers({ ...query, limit: USERS_PER_PAGE }, signal);
+const ROLE_OPTIONS = [
+  { value: '', label: 'Tất cả' },
+  { value: 'admin', label: 'Quản trị viên' },
+  { value: 'user', label: 'Thành viên' },
+];
+const STATUS_OPTIONS = [
+  { value: '', label: 'Tất cả' },
+  { value: 'active', label: 'Hoạt động' },
+  { value: 'locked', label: 'Đã khóa' },
+];
+
 export default function AdminPage() {
   const navigate = useNavigate();
   const [currentUser] = useState(() => authService.getStoredUser());
@@ -1001,54 +1013,47 @@ export default function AdminPage() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   // Chart Hover State
-  const [activeBarIndex, setActiveBarIndex] = useState(null);
 
   // Data States
-  const [stats, setStats] = useState(null);
-  const [usersList, setUsersList] = useState([]);
+  // Danh sách người dùng: tìm kiếm + lọc + phân trang phía máy chủ (có tổng số)
+  const [userSearch, setUserSearch] = useState('');
+  const [userRole, setUserRole] = useState('');
+  const [userStatus, setUserStatus] = useState('');
   const [userPage, setUserPage] = useState(1);
-  const [userHasMore, setUserHasMore] = useState(false);
+  const userQ = useDebounced(userSearch.trim(), 300);
+  const usersQuery = useMemo(
+    () => ({ q: userQ, role: userRole, status: userStatus, page: userPage }),
+    [userQ, userRole, userStatus, userPage]
+  );
+  const users = usePagedList(fetchAdminUsers, usersQuery);
+  const usersList = users.items;
+  const [userAction, setUserAction] = useState(null); // { user, action: 'lock' | 'unlock' | 'delete' }
+  const [resettingUser, setResettingUser] = useState(null);
+  const [topUsers, setTopUsers] = useState([]);
   const [topicsList, setTopicsList] = useState([]);
-  const [postsList, setPostsList] = useState([]);
-  const [backupsList, setBackupsList] = useState([]);
-
-  // Dữ liệu phân bố bậc nhóm lại theo khoảng để cột và số không bị đè lên nhau
-  const processedDegreeBuckets = useMemo(() => {
-    const raw = stats?.degreeBuckets;
-    if (!raw || !Array.isArray(raw) || raw.length === 0) {
-      return [];
-    }
-
-    // Nếu đã là dạng bucket khoảng
-    if (raw[0].bucket !== undefined) {
-      return raw.map((b) => ({
-        bucket: b.bucket,
-        users: Number(b.users ?? b.count ?? 0),
-      }));
-    }
-
-    // Nhóm thành các khoảng chuẩn log/power-law
-    const standardRanges = [
-      { bucket: '0', min: 0, max: 0, users: 0 },
-      { bucket: '1 - 5', min: 1, max: 5, users: 0 },
-      { bucket: '6 - 15', min: 6, max: 15, users: 0 },
-      { bucket: '16 - 30', min: 16, max: 30, users: 0 },
-      { bucket: '31 - 60', min: 31, max: 60, users: 0 },
-      { bucket: '61 - 120', min: 61, max: 120, users: 0 },
-      { bucket: '> 120', min: 121, max: Infinity, users: 0 },
-    ];
-
-    for (const item of raw) {
-      const deg = Number(item.degree ?? 0);
-      const count = Number(item.users ?? item.count ?? 0);
-      const target = standardRanges.find((r) => deg >= r.min && deg <= r.max);
-      if (target) {
-        target.users += count;
-      }
-    }
-
-    return standardRanges.filter((r) => r.users > 0 || r.bucket !== '0');
-  }, [stats?.degreeBuckets]);
+  // Chủ đề ít (vài chục) và API trả cả danh sách: tìm / sắp xếp / phân trang ngay trên trình duyệt
+  const [topicSearch, setTopicSearch] = useState('');
+  const [topicSort, setTopicSort] = useState('posts');
+  const [topicPage, setTopicPage] = useState(1);
+  const filteredTopics = useMemo(() => {
+    const q = topicSearch.trim().toLowerCase().replace(/^#/, '');
+    const list = topicsList.filter(
+      (t) => !q || t.name.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)
+    );
+    return list.sort((a, b) =>
+      topicSort === 'name'
+        ? a.name.localeCompare(b.name)
+        : topicSort === 'fewest'
+          ? (a.postCount ?? 0) - (b.postCount ?? 0) || a.name.localeCompare(b.name)
+          : (b.postCount ?? 0) - (a.postCount ?? 0) || a.name.localeCompare(b.name)
+    );
+  }, [topicsList, topicSearch, topicSort]);
+  const topicPages = Math.max(1, Math.ceil(filteredTopics.length / TOPICS_PER_PAGE));
+  const pagedTopics = filteredTopics.slice((topicPage - 1) * TOPICS_PER_PAGE, topicPage * TOPICS_PER_PAGE);
+  useEffect(() => setTopicPage(1), [topicSearch, topicSort]);
+  useEffect(() => {
+    if (topicPage > topicPages) setTopicPage(topicPages);
+  }, [topicPage, topicPages]);
 
   // Modals state
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -1059,6 +1064,8 @@ export default function AdminPage() {
   const editUserTriggerRef = useRef(null);
 
   const [isAddTopicOpen, setIsAddTopicOpen] = useState(false);
+  const [editingTopic, setEditingTopic] = useState(null);
+  const [deletingTopic, setDeletingTopic] = useState(null);
   const [newTopicForm, setNewTopicForm] = useState({
     name: '',
     description: '',
@@ -1069,28 +1076,24 @@ export default function AdminPage() {
     loadAllData();
   }, []);
 
+  // Hủy hẹn giờ của toast trước, nếu không toast mới (vd. lỗi) bị tắt sớm bởi hẹn giờ cũ
+  const toastTimerRef = useRef(null);
   const showToast = (message, type = 'success') => {
+    clearTimeout(toastTimerRef.current);
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    toastTimerRef.current = setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
   };
 
-  const loadAllData = async (targetPage = userPage) => {
+  // Chủ đề và người nổi bật (dùng ở tổng quan + tab chủ đề). Số liệu tổng quan do DashboardPanel tự tải. Danh sách người dùng / bài viết tự tải theo bộ lọc của từng bảng.
+  const loadAllData = async () => {
     setLoading(true);
     try {
-      await adminApi.ensureAdminAuth();
-      const [sData, uData, tData, pData, bData] = await Promise.all([
-        adminApi.getStats(),
-        adminApi.getUsers({ page: targetPage, limit: 10 }),
+      const [tData, top] = await Promise.all([
         adminApi.getTopics(),
-        adminApi.getPosts({ limit: 50 }),
-        adminApi.getBackups(),
+        adminApi.getTopUsers(5).catch(() => []),
       ]);
-      setStats(sData);
-      setUsersList(uData.items || []);
-      setUserHasMore(Boolean(uData.hasMore));
       setTopicsList(tData || []);
-      setPostsList(pData.items || []);
-      setBackupsList(bData || []);
+      setTopUsers(top || []);
     } catch (err) {
       console.error('Error loading admin data:', err);
     } finally {
@@ -1098,18 +1101,27 @@ export default function AdminPage() {
     }
   };
 
-  const handleUserPageChange = async (newPage) => {
-    if (newPage < 1) return;
-    setUserPage(newPage);
-    setLoading(true);
-    try {
-      const uData = await adminApi.getUsers({ page: newPage, limit: 10 });
-      setUsersList(uData.items || []);
-      setUserHasMore(Boolean(uData.hasMore));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+  // Đổi bộ lọc thì về trang 1
+  useEffect(() => setUserPage(1), [userQ, userRole, userStatus]);
+  // Xóa người cuối cùng của trang cuối: lùi về trang trước
+  useEffect(() => {
+    if (!users.loading && !users.error && users.items.length === 0 && userPage > 1) setUserPage((p) => p - 1);
+  }, [users.loading, users.error, users.items.length, userPage]);
+
+  // Tổng quan: bấm một mục "Cần chú ý" để mở đúng tab, đã lọc sẵn
+  const handleDashboardNavigate = (target) => {
+    if (target === 'locked-users') {
+      setUserSearch('');
+      setUserRole('');
+      setUserStatus('locked');
+      setActiveTab('users');
+    } else if (target === 'empty-topics') {
+      setTopicSearch('');
+      setTopicSort('fewest');
+      setSubTab('topics');
+      setActiveTab('topics_posts');
+    } else if (target === 'backups') {
+      setActiveTab('system');
     }
   };
 
@@ -1128,59 +1140,18 @@ export default function AdminPage() {
     }
   };
 
-  // Helper to ensure realistic followers count for display
-  const getFollowerCount = (u) => {
-    if (u.followersCount && u.followersCount > 0) return u.followersCount;
-    if (u.followers && u.followers > 0) return u.followers;
-    // Stable pseudo-random count derived from username/id
-    const charCode = (u.username || u.id || 'usr').charCodeAt(0);
-    return ((charCode * 7) % 65) + 18;
-  };
-
-  // User Actions
-  const handleToggleLockUser = async (user) => {
-    const nextStatus = user.status === 'locked' ? 'active' : 'locked';
-    const actionText = nextStatus === 'locked' ? 'khóa' : 'mở khóa';
-    if (!window.confirm(`Bạn có chắc chắn muốn ${actionText} tài khoản @${user.username} không?`)) {
-      return;
-    }
-    try {
-      await adminApi.setUserStatus(user.id, nextStatus);
-      setUsersList((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, status: nextStatus } : u))
-      );
-      showToast(`Đã ${actionText} tài khoản @${user.username}`);
-    } catch (err) {
-      showToast('Thao tác không thành công', 'error');
-    }
-  };
-
-  const handleDeleteUser = async (user) => {
-    if (!window.confirm(`CẢNH BÁO: Bạn có chắc chắn muốn xóa tài khoản @${user.username}? Thao tác này sẽ xóa toàn bộ quan hệ trong đồ thị và không thể hoàn tác.`)) {
-      return;
-    }
-    try {
-      await adminApi.deleteUser(user.id);
-      setUsersList((prev) => prev.filter((u) => u.id !== user.id));
+  // Khóa / mở khóa / xóa qua hộp thoại xác nhận (UserModals); backend chặn admin tự khóa / tự xóa mình
+  const isSelf = (u) => u.id === currentUser?.id;
+  const handleUserActionDone = (user, action) => {
+    setUserAction(null);
+    if (action === 'delete') {
       showToast(`Đã xóa tài khoản @${user.username}`);
+      users.reload();
       loadAllData();
-    } catch (err) {
-      showToast(err.message || 'Lỗi khi xóa tài khoản', 'error');
-    }
-  };
-
-  const handleResetPassword = async (user) => {
-    const newPass = window.prompt(`Nhập mật khẩu mới cho @${user.username} (tối thiểu 8 ký tự, có hoa, thường và số):`, 'Passw0rd123!');
-    if (!newPass) return;
-    if (newPass.length < 8) {
-      alert('Mật khẩu tối thiểu 8 ký tự!');
-      return;
-    }
-    try {
-      await adminApi.updateUser(user.id, { password: newPass });
-      showToast(`Đã đặt lại mật khẩu cho @${user.username}`);
-    } catch (err) {
-      showToast(err.message || 'Lỗi khi đặt lại mật khẩu', 'error');
+    } else {
+      const status = action === 'lock' ? 'locked' : 'active';
+      users.updateItems((items) => items.map((u) => (u.id === user.id ? { ...u, status } : u)));
+      showToast(`Đã ${action === 'lock' ? 'khóa' : 'mở khóa'} tài khoản @${user.username}`);
     }
   };
 
@@ -1199,95 +1170,29 @@ export default function AdminPage() {
       setIsAddTopicOpen(false);
       setNewTopicForm({ name: '', description: '' });
       showToast(`Đã thêm chủ đề #${created.name}`);
+      setTopicSearch(created.name); // chủ đề mới có 0 bài, nằm cuối danh sách: lọc để thấy ngay
       loadAllData();
     } catch (err) {
       showToast(err.message || 'Lỗi khi tạo chủ đề', 'error');
     }
   };
 
-  const handleDeleteTopic = async (id, name) => {
-    if (!confirm(`Xác nhận xóa chủ đề #${name}? Các liên kết sẽ bị gỡ bỏ.`)) return;
-    try {
-      await adminApi.deleteTopic(id);
-      setTopicsList(topicsList.filter((t) => t.id !== id));
-      showToast(`Đã xóa chủ đề #${name}`);
-      loadAllData();
-    } catch (err) {
-      showToast(err.message || 'Lỗi khi xóa chủ đề', 'error');
-    }
+  // Sửa / xóa chủ đề qua hộp thoại (TopicModals): hộp xóa hiển thị số bài viết, người quan tâm bị ảnh hưởng
+  const handleTopicSaved = (updated) => {
+    setTopicsList((list) => list.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
+    setEditingTopic(null);
+    showToast(`Đã cập nhật chủ đề #${updated.name}`);
   };
 
-  // Post Actions
-  const handleDeletePost = async (id) => {
-    if (!confirm('Xác nhận xóa bài viết này khỏi đồ thị?')) return;
-    try {
-      await adminApi.deletePost(id);
-      setPostsList(postsList.filter((p) => p.id !== id));
-      showToast('Đã xóa bài viết');
-      loadAllData();
-    } catch (err) {
-      showToast(err.message || 'Lỗi khi xóa bài viết', 'error');
-    }
+  const handleTopicDeleted = (topic) => {
+    setTopicsList((list) => list.filter((t) => t.id !== topic.id));
+    setDeletingTopic(null);
+    showToast(`Đã xóa chủ đề #${topic.name}`);
+    loadAllData();
   };
 
-  // System Actions
-  const handleSeed = async () => {
-    if (!confirm('Khởi tạo lại bộ dữ liệu đồ thị mẫu (2.000 người dùng, 10.000 bài viết, 50 chủ đề)?')) return;
-    setLoading(true);
-    try {
-      await adminApi.seedGraph();
-      showToast('Khởi tạo dữ liệu đồ thị mẫu thành công!');
-      setTimeout(loadAllData, 1000);
-    } catch (e) {
-      showToast('Lỗi khởi tạo dữ liệu', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Người dùng nổi bật: số người theo dõi thật (GET /analytics/influence)
 
-  const handleCreateBackup = async () => {
-    setLoading(true);
-    try {
-      const res = await adminApi.createBackup();
-      setBackupsList([res, ...backupsList]);
-      showToast('Đã tạo bản sao lưu');
-    } catch (e) {
-      showToast('Lỗi tạo sao lưu', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRestoreBackup = async (fileName) => {
-    if (!confirm(`Phục hồi từ bản sao lưu "${fileName}" sẽ ghi đè dữ liệu hiện tại. Tiếp tục?`)) return;
-    setLoading(true);
-    try {
-      await adminApi.restoreBackup(fileName);
-      showToast('Đã phục hồi dữ liệu thành công');
-      setTimeout(loadAllData, 1500);
-    } catch (e) {
-      showToast('Lỗi phục hồi dữ liệu', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Top Connected Users (with realistic numbers) & Popular Topics
-  const topUsers = [...usersList]
-    .map((u) => ({ ...u, followersDisplay: getFollowerCount(u) }))
-    .sort((a, b) => b.followersDisplay - a.followersDisplay)
-    .slice(0, 5);
-
-  const topTopics = [...topicsList].slice(0, 5);
-
-  // Relationship breakdown counts
-  const followsCount = stats?.edges?.FOLLOWS ?? 24;
-  const postedCount = stats?.edges?.POSTED ?? 4;
-  const aboutCount = stats?.edges?.ABOUT ?? 4;
-  const totalRels = stats?.totalEdges ?? (followsCount + postedCount + aboutCount);
-  const followsPct = totalRels > 0 ? (followsCount / totalRels) * 100 : 70;
-  const postedPct = totalRels > 0 ? (postedCount / totalRels) * 100 : 15;
-  const aboutPct = totalRels > 0 ? (aboutCount / totalRels) * 100 : 15;
 
   return (
     <div className="min-h-screen bg-[#F3F5F9] bg-[radial-gradient(ellipse_100%_320px_at_50%_0%,rgba(239,244,255,0.6),transparent)] text-[#0F172A] flex font-sans antialiased">
@@ -1297,7 +1202,7 @@ export default function AdminPage() {
       <aside className="w-16 lg:w-64 bg-white border-r border-[#E5E9F0] flex flex-col shrink-0 h-screen sticky top-0 z-30 transition-all duration-150 ease-out">
         {/* Logo Brand: Khớp với User App + Tag Quản trị */}
         <div className="h-16 flex items-center gap-2.5 px-4 lg:px-6 border-b border-[#E5E9F0] shrink-0">
-          <Link to="/" className="flex items-center gap-2.5 group btn-press">
+          <Link to="/admin" className="flex items-center gap-2.5 group btn-press">
             <div className="h-9 w-9 rounded-[10px] bg-[#EFF4FF] text-[#2563EB] flex items-center justify-center shrink-0 transition-colors duration-150 group-hover:bg-[#DBEAFE]">
               <Network className="h-5 w-5" />
             </div>
@@ -1387,17 +1292,6 @@ export default function AdminPage() {
                 <span className="hidden lg:inline">Nhập/xuất &amp; sao lưu</span>
               </button>
 
-              <Link
-                to="/analytics"
-                className="w-full flex items-center justify-between px-3 py-2 rounded-[10px] text-[13px] text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] transition-colors duration-150 btn-press"
-                title="Không gian Phân tích đồ thị"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Network className="h-4 w-4 text-[#2563EB] shrink-0" strokeWidth={1.5} />
-                  <span className="hidden lg:inline">Phân tích đồ thị</span>
-                </div>
-              </Link>
-
               <a
                 href="http://localhost:3000"
                 target="_blank"
@@ -1414,17 +1308,6 @@ export default function AdminPage() {
           </div>
         </nav>
 
-        {/* Sidebar Footer pinned to the bottom */}
-        <div className="p-3 border-t border-[#E5E9F0] shrink-0 mt-auto bg-white">
-          <Link
-            to="/"
-            className="flex items-center gap-2 px-3 py-2 rounded-[10px] text-[13px] text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] transition-colors duration-150 btn-press"
-            title="Về Mạng xã hội"
-          >
-            <ArrowLeft className="h-4 w-4 text-[#64748B] shrink-0" strokeWidth={1.5} />
-            <span className="hidden lg:inline">Về Mạng xã hội</span>
-          </Link>
-        </div>
       </aside>
 
       {/* ======================================================== */}
@@ -1521,9 +1404,17 @@ export default function AdminPage() {
                 </div>
                 <button
                   type="button"
+                  onClick={() => navigate('/')}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-[#0F172A] hover:bg-[#F1F5F9] rounded-lg transition-colors duration-150"
+                >
+                  <Share2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  <span>Mở mạng xã hội</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     authService.logout();
-                    navigate('/login');
+                    navigate('/login', { replace: true });
                   }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition-colors duration-150"
                 >
@@ -1537,9 +1428,16 @@ export default function AdminPage() {
 
         {/* Toast Popup */}
         {toast && (
-          <div className="fixed top-20 right-8 z-50 animate-in fade-in duration-150">
+          <div
+            className="fixed top-20 right-8 z-[1000] animate-in fade-in duration-150"
+            role={toast.type === 'error' ? 'alert' : 'status'}
+          >
             <div className="px-3.5 py-2 rounded-[10px] bg-[#0F172A] text-white text-[13px] flex items-center gap-2 shadow-md">
-              <CheckCircle2 className="h-4 w-4 text-[#22C55E]" strokeWidth={1.5} />
+              {toast.type === 'error' ? (
+                <AlertCircle className="h-4 w-4 text-[#F87171]" strokeWidth={1.5} aria-hidden="true" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-[#22C55E]" strokeWidth={1.5} aria-hidden="true" />
+              )}
               <span>{toast.message}</span>
             </div>
           </div>
@@ -1551,251 +1449,7 @@ export default function AdminPage() {
         <main className="flex-1 p-6 sm:p-8 max-w-[1200px] w-full mx-auto space-y-6">
           {/* TAB 1: TỔNG QUAN (DASHBOARD) */}
           {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              {/* Page Title & Quiet Refresh */}
-              <div className="flex items-center justify-between animate-fade-up">
-                <div>
-                  <h1 className="text-[24px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                    Tổng quan
-                  </h1>
-                  <p className="text-[14px] text-[#475569] mt-0.5">
-                    Số liệu mới nhất từ đồ thị mạng xã hội
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={loadAllData}
-                  className="h-9 px-3.5 rounded-[10px] bg-white hover:bg-slate-50 text-[#475569] hover:text-[#0F172A] border border-[#E5E9F0] text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-[#2563EB]' : ''}`} strokeWidth={1.5} />
-                  <span>Làm mới số liệu</span>
-                </button>
-              </div>
-
-              {/* 4 KPI Cards (Equal height with items-stretch, single-line legend for Kết nối) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
-                {/* 1. Người dùng */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-1">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium text-[#475569]">Người dùng</span>
-                      <Users className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    </div>
-                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                      <CountUp value={stats?.nodes?.User ?? 20} />
-                    </div>
-                  </div>
-                  <div className="text-[13px] text-[#64748B] pt-2">Đang hoạt động</div>
-                </div>
-
-                {/* 2. Bài viết */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-2">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium text-[#475569]">Bài viết</span>
-                      <FileText className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    </div>
-                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                      <CountUp value={stats?.nodes?.Post ?? 4} />
-                    </div>
-                  </div>
-                  <div className="text-[13px] text-[#64748B] pt-2">Đã gắn chủ đề</div>
-                </div>
-
-                {/* 3. Chủ đề */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium text-[#475569]">Chủ đề</span>
-                      <Hash className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    </div>
-                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                      <CountUp value={stats?.nodes?.Topic ?? 5} />
-                    </div>
-                  </div>
-                  <div className="text-[13px] text-[#64748B] pt-2">Dùng để lọc nội dung</div>
-                </div>
-
-                {/* 4. Kết nối (Merged with Segmented Bar & Matching Colored Dots) */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium text-[#475569]">Kết nối</span>
-                      <Share2 className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    </div>
-                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                      <CountUp value={totalRels} />
-                    </div>
-                  </div>
-                  <div className="pt-2 space-y-1.5">
-                    {/* Segmented Bar */}
-                    <div className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5 bg-[#F1F5F9]">
-                      <div style={{ width: `${followsPct}%` }} className="bg-[#2563EB]" title={`Theo dõi: ${followsCount}`} />
-                      <div style={{ width: `${postedPct}%` }} className="bg-[#64748B]" title={`Đăng bài: ${postedCount}`} />
-                      <div style={{ width: `${aboutPct}%` }} className="bg-[#94A3B8]" title={`Chủ đề: ${aboutCount}`} />
-                    </div>
-                    {/* Legend on ONE line (12px, gap 12px between items, no trailing "·", shortened labels) */}
-                    <div className="flex items-center gap-3 text-[12px] text-[#64748B] pt-0.5 whitespace-nowrap overflow-hidden">
-                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> Theo dõi {followsCount}
-                      </span>
-                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#64748B]" /> Đăng bài {postedCount}
-                      </span>
-                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#94A3B8]" /> Chủ đề {aboutCount}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Degree Distribution Chart Card */}
-              <div className="p-6 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3 animate-fade-up stagger-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2 className="text-[15px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                      Phân bố số kết nối của người dùng
-                    </h2>
-                    <p className="text-[13px] text-[#475569] mt-0.5">
-                      Mỗi cột là số người dùng có cùng số kết nối.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Y-Axis Label Placed Top-Left above the chart to completely avoid tick overlap */}
-                <div className="text-[12px] font-medium text-[#64748B] pl-2 pt-1">
-                  Số người dùng
-                </div>
-
-                <div className="h-[260px] w-full">
-                  {loading && !stats ? (
-                    <div className="h-full flex items-center justify-center text-xs text-[#64748B]">
-                      <RefreshCw className="h-5 w-5 animate-spin text-[#2563EB] mb-2" />
-                    </div>
-                  ) : processedDegreeBuckets.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-xs text-[#64748B]">
-                      Chưa có dữ liệu phân bố kết nối
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={processedDegreeBuckets}
-                        margin={{ top: 20, right: 16, left: 0, bottom: 6 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E9F0" vertical={false} />
-                        <XAxis
-                          dataKey="bucket"
-                          tick={{ fontSize: 12, fill: '#475569' }}
-                          tickLine={false}
-                          axisLine={false}
-                          label={{ value: 'Khoảng số kết nối (bậc)', position: 'insideBottom', offset: -4, fontSize: 12, fill: '#64748B' }}
-                          height={32}
-                        />
-                        <YAxis
-                          allowDecimals={false}
-                          tick={{ fontSize: 12, fill: '#475569' }}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <Tooltip
-                          cursor={{ fill: '#EFF4FF', opacity: 0.6 }}
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const data = payload[0].payload;
-                              return (
-                                <div className="bg-[#0F172A] text-white px-3 py-1.5 rounded-[8px] text-xs tabular-nums shadow-md">
-                                  {data.bucket} kết nối: {data.users.toLocaleString('vi-VN')} người dùng
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar
-                          dataKey="users"
-                          maxBarSize={48}
-                          radius={[4, 4, 0, 0]}
-                          isAnimationActive={true}
-                          animationDuration={500}
-                          onMouseEnter={(_, index) => setActiveBarIndex(index)}
-                          onMouseLeave={() => setActiveBarIndex(null)}
-                        >
-                          {processedDegreeBuckets.map((entry, index) => (
-                            <Cell
-                              key={`bar-${index}`}
-                              fill="#2563EB"
-                              fillOpacity={activeBarIndex === index ? 1 : 0.85}
-                              className="transition-opacity duration-150 cursor-pointer"
-                            />
-                          ))}
-                          <LabelList
-                            dataKey="users"
-                            position="top"
-                            fill="#475569"
-                            fontSize={12}
-                            offset={6}
-                            formatter={(val) => val.toLocaleString('vi-VN')}
-                          />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </div>
-
-              {/* 2-Column Row: Người dùng kết nối nhiều nhất & Chủ đề phổ biến */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Người dùng kết nối nhiều nhất (Realistic Numbers) */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3 animate-fade-up stagger-3">
-                  <h3 className="text-[14px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                    Người dùng kết nối nhiều nhất
-                  </h3>
-                  <div className="divide-y divide-[#E5E9F0]/60">
-                    {topUsers.map((u) => (
-                      <div key={u.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between text-[13px]">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <img
-                            src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
-                            className="w-7 h-7 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0]"
-                          />
-                          <div className="truncate">
-                            <div className="font-medium text-[#0F172A] truncate">{u.fullName}</div>
-                            <div className="text-[11px] text-[#64748B] tabular-nums">@{u.username}</div>
-                          </div>
-                        </div>
-                        <span className="text-[12px] text-[#475569] font-medium tabular-nums shrink-0 ml-3">
-                          {u.followersDisplay} kết nối
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Chủ đề phổ biến (với Matching Pastel Dots) */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3 animate-fade-up stagger-4">
-                  <h3 className="text-[14px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                    Chủ đề phổ biến
-                  </h3>
-                  <div className="divide-y divide-[#E5E9F0]/60">
-                    {topTopics.map((t) => (
-                      <div key={t.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between text-[13px]">
-                        <div className="min-w-0 pr-3 flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getTopicColor(t.name) }} />
-                          <div>
-                            <div className="font-medium text-[#2563EB]">#{t.name}</div>
-                            <div className="text-[11px] text-[#64748B] truncate">{t.description || 'Chủ đề thảo luận'}</div>
-                          </div>
-                        </div>
-                        <span className="text-[12px] text-[#475569] font-medium tabular-nums shrink-0">
-                          {t.postCount ?? 8} bài viết
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <DashboardPanel topUsers={topUsers} topics={topicsList} onNavigate={handleDashboardNavigate} />
           )}
 
           {/* TAB 2: QUẢN LÝ NGƯỜI DÙNG */}
@@ -1828,8 +1482,8 @@ export default function AdminPage() {
                 isOpen={isAddUserOpen}
                 onClose={() => setIsAddUserOpen(false)}
                 onSuccess={(created) => {
-                  setUsersList((prev) => [created, ...prev]);
                   showToast(`Đã tạo người dùng @${created.username}`);
+                  users.reload();
                   loadAllData();
                 }}
                 triggerRef={addUserTriggerRef}
@@ -1844,32 +1498,63 @@ export default function AdminPage() {
                   setEditingUser(null);
                 }}
                 onSuccess={(updated) => {
-                  setUsersList((prev) =>
+                  users.updateItems((prev) =>
                     prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u))
                   );
                   showToast(`Đã cập nhật thông tin @${updated.username || editingUser?.username}`);
-                  loadAllData();
                 }}
                 triggerRef={editUserTriggerRef}
               />
 
-              {/* Table User (Headers: Sentence Case 13px/500, Status: Soft Chip, Lock: Clear Action Button) */}
-              <div className="bg-white border border-[#E5E9F0] card-hover rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                <table className="w-full text-left text-[13px]">
-                  <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
+              {/* Bộ lọc: tìm theo tên / tên đăng nhập / email, vai trò, trạng thái */}
+              <div className="flex flex-wrap items-center gap-3">
+                <SearchBox
+                  id="admin-user-search"
+                  label="Tìm người dùng theo họ tên, tên đăng nhập hoặc email"
+                  value={userSearch}
+                  onChange={setUserSearch}
+                  placeholder="Tìm theo họ tên, @tên đăng nhập, email…"
+                />
+                <FilterSelect id="admin-user-role" label="Vai trò" value={userRole} onChange={setUserRole} options={ROLE_OPTIONS} />
+                <FilterSelect
+                  id="admin-user-status"
+                  label="Trạng thái"
+                  value={userStatus}
+                  onChange={setUserStatus}
+                  options={STATUS_OPTIONS}
+                />
+              </div>
+
+              <div className="bg-white border border-[#E5E9F0] rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <table className="w-full text-left text-[13px]" aria-busy={users.loading}>
+                  <caption className="sr-only">Danh sách người dùng</caption>
+                  <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#475569]">
                     <tr>
-                      <th className="py-3 px-4">Người dùng</th>
-                      <th className="py-3 px-4 min-w-[140px]">Tên đăng nhập</th>
-                      <th className="py-3 px-4">Vai trò</th>
-                      <th className="py-3 px-4">Số người theo dõi</th>
-                      <th className="py-3 px-4">Trạng thái</th>
-                      <th className="py-3 px-4 text-right">Hành động</th>
+                      <th scope="col" className="py-3 px-4">Người dùng</th>
+                      <th scope="col" className="py-3 px-4 min-w-[140px]">Tên đăng nhập</th>
+                      <th scope="col" className="py-3 px-4">Vai trò</th>
+                      <th scope="col" className="py-3 px-4 text-right">Người theo dõi</th>
+                      <th scope="col" className="py-3 px-4 text-right">Bài viết</th>
+                      <th scope="col" className="py-3 px-4">Trạng thái</th>
+                      <th scope="col" className="py-3 px-4 text-right">Hành động</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E5E9F0]/60">
-                    {usersList.map((u) => {
+                  <tbody className={`divide-y divide-[#E5E9F0]/60 ${users.loading ? 'opacity-60' : ''}`}>
+                    <TableStatusRow
+                      colSpan={7}
+                      loading={users.loading}
+                      error={users.error}
+                      empty={usersList.length === 0}
+                      onRetry={users.reload}
+                      emptyText={
+                        userQ || userRole || userStatus
+                          ? 'Không có người dùng nào khớp bộ lọc.'
+                          : 'Chưa có người dùng nào.'
+                      }
+                    />
+                    {!users.error && usersList.map((u) => {
                       const isLocked = u.status === 'locked';
-                      const followersCount = getFollowerCount(u);
+                      const self = isSelf(u);
 
                       return (
                         <tr key={u.id} className="hover:bg-[#F3F5F9]/60 transition-colors duration-150">
@@ -1877,29 +1562,24 @@ export default function AdminPage() {
                             <div className="flex items-center gap-2.5">
                               <img
                                 src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
-                                alt={u.fullName}
+                                alt=""
                                 className="w-6 h-6 rounded-full object-cover bg-slate-100 ring-1 ring-white border border-[#E5E9F0]"
                               />
                               <span className="font-medium text-[#0F172A]">{u.fullName}</span>
+                              {self && (
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-slate-100 text-[#475569]">Bạn</span>
+                              )}
                             </div>
                           </td>
                           <td className="py-2.5 px-4 text-[12px] text-[#475569] tabular-nums">
-                            <span
-                              className="inline-block max-w-[160px] truncate align-middle"
-                              title={`@${u.username}`}
-                            >
+                            <span className="inline-block max-w-[160px] truncate align-middle" title={`@${u.username}`}>
                               @{u.username}
                             </span>
                           </td>
                           <td className="py-2.5 px-4">
-                            {/* Role Badge: Quản trị viên (xanh), Thành viên (xám), Nhà phân tích (tím) */}
                             {u.role === 'admin' ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#EFF4FF] text-[#2563EB] border border-[#BFDBFE]">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#EFF4FF] text-[#1D4ED8] border border-[#BFDBFE]">
                                 Quản trị viên
-                              </span>
-                            ) : u.role === 'analyst' ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
-                                Nhà phân tích
                               </span>
                             ) : (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-[#475569] border border-slate-200">
@@ -1907,44 +1587,49 @@ export default function AdminPage() {
                               </span>
                             )}
                           </td>
-                          <td className="py-2.5 px-4 tabular-nums text-[#0F172A]">
-                            {followersCount.toLocaleString('vi-VN')}
+                          <td className="py-2.5 px-4 text-right tabular-nums text-[#0F172A]">
+                            {Number(u.followers ?? 0).toLocaleString('vi-VN')}
+                          </td>
+                          <td className="py-2.5 px-4 text-right tabular-nums text-[#0F172A]">
+                            {Number(u.posts ?? 0).toLocaleString('vi-VN')}
                           </td>
                           <td className="py-2.5 px-4">
-                            {/* Status Chip: Green tint / Red tint */}
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              isLocked 
-                                ? 'bg-rose-50 text-rose-700 border border-rose-200/60' 
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${isLocked ? 'bg-rose-600' : 'bg-emerald-600'}`} />
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                isLocked
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200/60'
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${isLocked ? 'bg-rose-600' : 'bg-emerald-600'}`} aria-hidden="true" />
                               <span>{isLocked ? 'Đã khóa' : 'Hoạt động'}</span>
                             </span>
                           </td>
                           <td className="py-2.5 px-4 text-right">
                             <div className="inline-flex items-center justify-end gap-1.5">
-                              {/* Nút Khóa / Mở khóa với viền cam/đỏ nhạt rõ hành động */}
                               <button
                                 type="button"
-                                onClick={() => handleToggleLockUser(u)}
-                                className={`h-7 px-2.5 rounded-[8px] text-[12px] font-medium transition-colors duration-150 btn-press focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                                onClick={() => setUserAction({ user: u, action: isLocked ? 'unlock' : 'lock' })}
+                                disabled={self}
+                                title={self ? 'Không thể tự khóa tài khoản của mình' : undefined}
+                                aria-label={`${isLocked ? 'Mở khóa' : 'Khóa'} tài khoản @${u.username}`}
+                                className={`h-7 px-2.5 rounded-[8px] text-[12px] font-medium transition-colors duration-150 btn-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:opacity-40 disabled:pointer-events-none ${
                                   isLocked
-                                    ? 'bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 focus:ring-emerald-500'
-                                    : 'bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 focus:ring-amber-500'
+                                    ? 'bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-600'
+                                    : 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 focus-visible:ring-amber-600'
                                 }`}
                               >
                                 {isLocked ? 'Mở khóa' : 'Khóa'}
                               </button>
 
-                              {/* Menu "⋯" chứa Sửa, Đặt lại mật khẩu, Xóa */}
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <button
                                     type="button"
-                                    className="h-7 w-7 rounded-[8px] flex items-center justify-center text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100 border border-[#E5E9F0] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-1 transition-colors"
-                                    title="Tùy chọn khác"
+                                    className="h-7 w-7 rounded-[8px] flex items-center justify-center text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100 border border-[#E5E9F0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-1 transition-colors"
+                                    aria-label={`Tùy chọn khác cho @${u.username}`}
                                   >
-                                    <MoreHorizontal className="h-4 w-4" />
+                                    <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                                   </button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-44 bg-white border border-[#E5E9F0] rounded-[10px] shadow-lg p-1 text-xs">
@@ -1952,23 +1637,25 @@ export default function AdminPage() {
                                     onClick={() => handleEditUser(u)}
                                     className="px-2.5 py-1.5 rounded-[6px] text-[#0F172A] hover:bg-[#F1F5F9] cursor-pointer flex items-center gap-2"
                                   >
-                                    <Edit className="h-3.5 w-3.5 text-[#64748B]" />
+                                    <Edit className="h-3.5 w-3.5 text-[#64748B]" aria-hidden="true" />
                                     <span>Sửa thông tin</span>
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
-                                    onClick={() => handleResetPassword(u)}
+                                    onClick={() => setResettingUser(u)}
                                     className="px-2.5 py-1.5 rounded-[6px] text-[#0F172A] hover:bg-[#F1F5F9] cursor-pointer flex items-center gap-2"
                                   >
-                                    <KeyRound className="h-3.5 w-3.5 text-[#64748B]" />
+                                    <KeyRound className="h-3.5 w-3.5 text-[#64748B]" aria-hidden="true" />
                                     <span>Đặt lại mật khẩu</span>
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleDeleteUser(u)}
-                                    className="px-2.5 py-1.5 rounded-[6px] text-rose-600 hover:bg-rose-50 cursor-pointer flex items-center gap-2"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                                    <span>Xóa người dùng</span>
-                                  </DropdownMenuItem>
+                                  {!self && (
+                                    <DropdownMenuItem
+                                      onClick={() => setUserAction({ user: u, action: 'delete' })}
+                                      className="px-2.5 py-1.5 rounded-[6px] text-rose-700 hover:bg-rose-50 cursor-pointer flex items-center gap-2"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5 text-rose-600" aria-hidden="true" />
+                                      <span>Xóa người dùng</span>
+                                    </DropdownMenuItem>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
@@ -1979,31 +1666,36 @@ export default function AdminPage() {
                   </tbody>
                 </table>
 
-                {/* Pagination Controls */}
-                <div className="p-3.5 bg-[#F8FAFC] border-t border-[#E5E9F0] flex items-center justify-between text-xs text-[#475569]">
-                  <div>
-                    Trang <span className="font-semibold text-[#0F172A] tabular-nums">{userPage}</span> • Đang hiển thị <span className="font-semibold text-[#0F172A] tabular-nums">{usersList.length}</span> / <span className="font-semibold text-[#0F172A] tabular-nums">{stats?.nodes?.User?.toLocaleString('vi-VN') || '10.000'}</span> người dùng
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={userPage <= 1 || loading}
-                      onClick={() => handleUserPageChange(userPage - 1)}
-                      className="h-8 px-3 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:bg-slate-50 hover:text-[#0F172A] disabled:opacity-40 disabled:pointer-events-none transition-colors btn-press shadow-2xs"
-                    >
-                      Trang trước
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!userHasMore || loading}
-                      onClick={() => handleUserPageChange(userPage + 1)}
-                      className="h-8 px-3 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:bg-slate-50 hover:text-[#0F172A] disabled:opacity-40 disabled:pointer-events-none transition-colors btn-press shadow-2xs"
-                    >
-                      Trang sau
-                    </button>
-                  </div>
-                </div>
+                <Pager
+                  label="Phân trang người dùng"
+                  noun="người dùng"
+                  page={userPage}
+                  limit={USERS_PER_PAGE}
+                  total={users.total}
+                  shown={users.error ? 0 : usersList.length}
+                  loading={users.loading}
+                  onPage={setUserPage}
+                />
               </div>
+
+              {userAction && (
+                <ConfirmUserActionModal
+                  user={userAction.user}
+                  action={userAction.action}
+                  onClose={() => setUserAction(null)}
+                  onDone={handleUserActionDone}
+                />
+              )}
+              {resettingUser && (
+                <ResetPasswordModal
+                  user={resettingUser}
+                  onClose={() => setResettingUser(null)}
+                  onDone={(u) => {
+                    setResettingUser(null);
+                    showToast(`Đã đặt lại mật khẩu cho @${u.username}`);
+                  }}
+                />
+              )}
             </div>
           )}
 
@@ -2049,14 +1741,27 @@ export default function AdminPage() {
               {/* Sub-tab 1: Chủ đề */}
               {subTab === 'topics' && (
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[14px] font-medium text-[#0F172A]">Danh sách chủ đề</span>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <SearchBox
+                      id="admin-topic-search"
+                      label="Tìm chủ đề theo tên hoặc mô tả"
+                      value={topicSearch}
+                      onChange={setTopicSearch}
+                      placeholder="Tìm theo tên hoặc mô tả chủ đề…"
+                    />
+                    <FilterSelect
+                      id="admin-topic-sort"
+                      label="Sắp xếp"
+                      value={topicSort}
+                      onChange={setTopicSort}
+                      options={TOPIC_SORT_OPTIONS}
+                    />
                     <button
                       type="button"
                       onClick={() => setIsAddTopicOpen(true)}
-                      className="h-9 px-4 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs"
+                      className="ml-auto h-9 px-4 rounded-[10px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
                     >
-                      <Plus className="h-4 w-4" strokeWidth={1.5} />
+                      <Plus className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
                       <span>Thêm chủ đề</span>
                     </button>
                   </div>
@@ -2066,100 +1771,108 @@ export default function AdminPage() {
                       <input
                         type="text"
                         required
+                        aria-label="Tên chủ đề mới"
                         value={newTopicForm.name}
                         onChange={(e) => setNewTopicForm({ ...newTopicForm, name: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })}
                         placeholder="Tên chủ đề (vd: ai-machine-learning)"
-                        className="h-9 px-3 bg-[#F8FAFC] rounded-[10px] text-xs w-60 border border-[#E5E9F0] text-[#0F172A] focus:outline-none focus:border-[#2563EB]"
+                        className="h-9 px-3 bg-[#F8FAFC] rounded-[10px] text-xs w-60 border border-[#E5E9F0] text-[#0F172A] focus:outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#2563EB]"
                       />
                       <input
                         type="text"
+                        aria-label="Mô tả chủ đề mới"
                         value={newTopicForm.description}
                         onChange={(e) => setNewTopicForm({ ...newTopicForm, description: e.target.value })}
                         placeholder="Mô tả tóm tắt…"
-                        className="flex-1 h-9 px-3 bg-[#F8FAFC] rounded-[10px] text-xs border border-[#E5E9F0] text-[#0F172A] focus:outline-none focus:border-[#2563EB]"
+                        className="flex-1 h-9 px-3 bg-[#F8FAFC] rounded-[10px] text-xs border border-[#E5E9F0] text-[#0F172A] focus:outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#2563EB]"
                       />
                       <button type="submit" className="h-9 px-4 bg-[#2563EB] text-white text-xs rounded-[10px] font-medium btn-press shadow-2xs">
                         Lưu
                       </button>
-                      <button type="button" onClick={() => setIsAddTopicOpen(false)} className="h-9 px-3 text-[#64748B] text-xs hover:text-[#0F172A] btn-press">
+                      <button type="button" onClick={() => setIsAddTopicOpen(false)} className="h-9 px-3 text-[#475569] text-xs hover:text-[#0F172A] btn-press">
                         Hủy
                       </button>
                     </form>
                   )}
 
-                  <div className="bg-white border border-[#E5E9F0] card-hover rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                  <div className="bg-white border border-[#E5E9F0] rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                     <table className="w-full text-left text-[13px]">
-                      <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
+                      <caption className="sr-only">Danh sách chủ đề</caption>
+                      <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#475569]">
                         <tr>
-                          <th className="py-3 px-4">Tên chủ đề</th>
-                          <th className="py-3 px-4">Mô tả</th>
-                          <th className="py-3 px-4 text-right">Thao tác</th>
+                          <th scope="col" className="py-3 px-4">Tên chủ đề</th>
+                          <th scope="col" className="py-3 px-4">Mô tả</th>
+                          <th scope="col" className="py-3 px-4 text-right">Bài viết</th>
+                          <th scope="col" className="py-3 px-4 text-right">Thao tác</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#E5E9F0]/60">
-                        {topicsList.map((t) => (
+                        <TableStatusRow
+                          colSpan={4}
+                          loading={loading}
+                          error=""
+                          empty={pagedTopics.length === 0}
+                          onRetry={loadAllData}
+                          emptyText={topicSearch.trim() ? 'Không có chủ đề nào khớp từ khóa.' : 'Chưa có chủ đề nào.'}
+                        />
+                        {pagedTopics.map((t) => (
                           <tr key={t.id} className="hover:bg-[#F3F5F9]/60 transition-colors">
-                            <td className="py-2.5 px-4 font-medium text-[#2563EB] flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getTopicColor(t.name) }} />
-                              <span>#{t.name}</span>
+                            <td className="py-2.5 px-4 font-medium text-[#1D4ED8] whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getTopicColor(t.name) }} aria-hidden="true" />
+                                <span>#{t.name}</span>
+                              </span>
                             </td>
                             <td className="py-2.5 px-4 text-[#475569]">{t.description || 'Chưa có mô tả'}</td>
-                            <td className="py-2.5 px-4 text-right">
+                            <td className="py-2.5 px-4 text-right tabular-nums text-[#0F172A]">
+                              {Number(t.postCount ?? 0).toLocaleString('vi-VN')}
+                            </td>
+                            <td className="py-2.5 px-4 text-right whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => handleDeleteTopic(t.id, t.name)}
-                                className="text-[#64748B] hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors btn-press"
-                                title="Xóa chủ đề"
+                                onClick={() => setEditingTopic(t)}
+                                className="text-[#64748B] hover:text-[#2563EB] p-1.5 rounded-lg hover:bg-[#EFF4FF] transition-colors btn-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                                title="Sửa chủ đề"
+                                aria-label={`Sửa chủ đề #${t.name}`}
                               >
-                                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                <Edit className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingTopic(t)}
+                                className="text-[#64748B] hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors btn-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                                title="Xóa chủ đề"
+                                aria-label={`Xóa chủ đề #${t.name}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
                               </button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                    <Pager
+                      label="Phân trang chủ đề"
+                      noun="chủ đề"
+                      page={topicPage}
+                      limit={TOPICS_PER_PAGE}
+                      total={filteredTopics.length}
+                      shown={pagedTopics.length}
+                      loading={false}
+                      onPage={setTopicPage}
+                    />
                   </div>
                 </div>
               )}
 
-              {/* Sub-tab 2: Bài viết */}
-              {subTab === 'posts' && (
-                <div className="space-y-4">
-                  <span className="text-[14px] font-medium text-[#0F172A]">Danh sách bài viết</span>
-                  <div className="bg-white border border-[#E5E9F0] card-hover rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                    <table className="w-full text-left text-[13px]">
-                      <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
-                        <tr>
-                          <th className="py-3 px-4">Tác giả</th>
-                          <th className="py-3 px-4">Nội dung</th>
-                          <th className="py-3 px-4">Lượt thích</th>
-                          <th className="py-3 px-4 text-right">Thao tác</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#E5E9F0]/60">
-                        {postsList.map((p) => (
-                          <tr key={p.id} className="hover:bg-[#F3F5F9]/60 transition-colors">
-                            <td className="py-2.5 px-4 font-medium text-[#0F172A] whitespace-nowrap">
-                              @{p.author?.username || p.authorId || 'user'}
-                            </td>
-                            <td className="py-2.5 px-4 text-[#475569] max-w-md truncate">{p.content}</td>
-                            <td className="py-2.5 px-4 tabular-nums text-[#64748B]">{p.likeCount || 0}</td>
-                            <td className="py-2.5 px-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleDeletePost(p.id)}
-                                className="h-7 px-2.5 rounded-[8px] border border-[#E5E9F0] text-[12px] text-rose-600 hover:bg-rose-50 transition-colors btn-press"
-                              >
-                                Xóa
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+              {editingTopic && (
+                <EditTopicModal topic={editingTopic} onClose={() => setEditingTopic(null)} onSaved={handleTopicSaved} />
               )}
+              {deletingTopic && (
+                <DeleteTopicModal topic={deletingTopic} onClose={() => setDeletingTopic(null)} onDeleted={handleTopicDeleted} />
+              )}
+
+              {/* Sub-tab 2: Bài viết (kiểm duyệt) */}
+              {subTab === 'posts' && <PostsPanel topics={topicsList} showToast={showToast} onChanged={loadAllData} />}
             </div>
           )}
 
@@ -2171,137 +1884,11 @@ export default function AdminPage() {
                   Nhập/xuất &amp; sao lưu
                 </h1>
                 <p className="text-[14px] text-[#475569] mt-0.5">
-                  Quản lý dữ liệu đồ thị, khởi tạo dữ liệu mẫu và sao lưu hệ thống
+                  Xuất, nhập dữ liệu đồ thị và sao lưu, phục hồi toàn hệ thống
                 </p>
               </div>
 
-              {/* Khối Nhập / Xuất (Only 1 Solid-Accent Button per card area) */}
-              <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-4">
-                <h2 className="text-[15px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                  Dữ liệu đồ thị &amp; khởi tạo
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-                  {/* Xuất dữ liệu: Outline buttons */}
-                  <div className="p-4 bg-[#F8FAFC] border border-[#E5E9F0] rounded-[12px] space-y-2.5">
-                    <div className="font-semibold text-[13px] text-[#0F172A]">Xuất toàn bộ đồ thị</div>
-                    <p className="text-[12px] text-[#64748B]">Tải file dữ liệu dạng JSON hoặc CSV</p>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => adminApi.exportData('json', 'all')}
-                        className="flex-1 h-8 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 flex items-center justify-center gap-1 transition-colors btn-press shadow-2xs"
-                      >
-                        <Download className="h-3 w-3" strokeWidth={1.5} />
-                        <span>JSON</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => adminApi.exportData('csv', 'User')}
-                        className="flex-1 h-8 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 flex items-center justify-center gap-1 transition-colors btn-press shadow-2xs"
-                      >
-                        <Download className="h-3 w-3" strokeWidth={1.5} />
-                        <span>CSV</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Nhập dữ liệu: Outline button */}
-                  <div className="p-4 bg-[#F8FAFC] border border-[#E5E9F0] rounded-[12px] space-y-2.5">
-                    <div className="font-semibold text-[13px] text-[#0F172A]">Nhập dữ liệu</div>
-                    <p className="text-[12px] text-[#64748B]">Nạp file CSV hoặc JSON vào cơ sở dữ liệu</p>
-                    <label className="h-8 rounded-[8px] bg-white border border-[#E5E9F0] text-xs font-medium text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 flex items-center justify-center gap-1 cursor-pointer transition-colors btn-press shadow-2xs">
-                      <Upload className="h-3 w-3" strokeWidth={1.5} />
-                      <span>Chọn file</span>
-                      <input
-                        type="file"
-                        accept=".csv,.json"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            showToast(`Đã nhận file ${e.target.files[0].name}. Đang nạp...`);
-                            setTimeout(loadAllData, 1000);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-
-                  {/* Sinh dữ liệu mẫu quy mô lớn (2.000 Users, 10.000 Posts, 50 Topics) */}
-                  <div className="p-4 bg-[#EFF4FF] border border-[#2563EB]/20 rounded-[12px] space-y-2.5">
-                    <div className="font-semibold text-[13px] text-[#2563EB]">Sinh dữ liệu mẫu</div>
-                    <p className="text-[12px] text-[#475569] leading-relaxed">
-                      2.000 người dùng, 10.000 bài viết, 50 chủ đề và ~110.000 kết nối
-                    </p>
-                    {/* The single solid-accent button for this area */}
-                    <button
-                      type="button"
-                      onClick={handleSeed}
-                      disabled={loading}
-                      className="w-full h-8 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium transition-colors btn-press shadow-2xs"
-                    >
-                      Bắt đầu tạo
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Khối Sao lưu / Phục hồi */}
-              <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-[15px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                      Sao lưu &amp; phục hồi
-                    </h2>
-                    <p className="text-[13px] text-[#475569] mt-0.5">
-                      Lưu snapshot RDB/AOF và phục hồi khi cần
-                    </p>
-                  </div>
-                  {/* Outline button for "Tạo bản sao lưu" so "Bắt đầu tạo" is the only solid accent button */}
-                  <button
-                    type="button"
-                    onClick={handleCreateBackup}
-                    disabled={loading}
-                    className="h-9 px-4 rounded-[10px] bg-white border border-[#E5E9F0] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs"
-                  >
-                    <Plus className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    <span>Tạo bản sao lưu</span>
-                  </button>
-                </div>
-
-                <div className="border border-[#E5E9F0] rounded-[12px] overflow-hidden">
-                  <table className="w-full text-left text-[13px]">
-                    <thead className="bg-[#F8FAFC] border-b border-[#E5E9F0] text-[#64748B] text-[13px] font-medium [&_th]:font-medium [&_th]:text-[13px] [&_th]:text-[#64748B]">
-                      <tr>
-                        <th className="py-3 px-4">Tên file</th>
-                        <th className="py-3 px-4">Thời gian</th>
-                        <th className="py-3 px-4">Dung lượng</th>
-                        <th className="py-3 px-4 text-right">Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E5E9F0]/60">
-                      {backupsList.map((b, i) => (
-                        <tr key={i} className="hover:bg-[#F3F5F9]/60 transition-colors">
-                          <td className="py-2.5 px-4 text-[12px] text-[#0F172A] tabular-nums">{b.file}</td>
-                          <td className="py-2.5 px-4 text-[#475569] tabular-nums">
-                            {new Date(b.createdAt).toLocaleString('vi-VN')}
-                          </td>
-                          <td className="py-2.5 px-4 text-[#64748B] tabular-nums">{b.size || '1.3 MB'}</td>
-                          <td className="py-2.5 px-4 text-right">
-                            {/* Secondary Outline button */}
-                            <button
-                              type="button"
-                              onClick={() => handleRestoreBackup(b.file)}
-                              className="h-7 px-2.5 rounded-[8px] border border-[#E5E9F0] text-[12px] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50 transition-colors btn-press"
-                            >
-                              Phục hồi
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <SystemPanel showToast={showToast} onChanged={loadAllData} />
             </div>
           )}
         </main>

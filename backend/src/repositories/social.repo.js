@@ -26,9 +26,11 @@ export async function unlike(uid, pid) {
   return true;
 }
 
+// Trả về thời điểm tạo: cùng userId, đây là khóa để xóa bình luận sau này
 export async function comment(uid, pid, text) {
-  await write(interactions.comment, { uid, pid, text, now: Date.now() });
-  return true;
+  const now = Date.now();
+  await write(interactions.comment, { uid, pid, text, now });
+  return now;
 }
 
 export async function share(uid, pid, via = null) {
@@ -44,6 +46,23 @@ export async function comments(pid, { skip = 0, limit = 20 } = {}) {
     text: r.text,
     at: Number(r.at ?? 0),
   }));
+}
+
+export async function findComment(uid, pid, at) {
+  const rows = await read(interactions.findComment, { uid, pid, at });
+  if (!rows.length) return null;
+  return { userId: uid, username: rows[0].username, text: rows[0].text, at: Number(rows[0].at) };
+}
+
+export async function removeComment(uid, pid, at) {
+  await write(interactions.removeComment, { uid, pid, at });
+  return true;
+}
+
+export async function recountMany(pids) {
+  if (!pids.length) return 0;
+  const rows = await write(interactions.recountMany, { pids });
+  return Number(rows[0]?.n ?? 0);
 }
 
 export async function recount(pid) {

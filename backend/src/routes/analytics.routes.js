@@ -82,11 +82,11 @@ router.get(
   })
 );
 
-// GET /api/analytics/influence?metric=followers|pagerank&limit=10 (BT5 - UC-13, Role: Analyst, Admin)
+// GET /api/analytics/influence?metric=followers|pagerank&limit=10 (BT5 - UC-13, Role: Admin)
 router.get(
   '/analytics/influence',
   requireAuth,
-  requireRole('analyst', 'admin'),
+  requireRole('admin'),
   validate(influenceQuerySchema, 'query'),
   asyncH(async (req, res) => {
     const data = await analyticsService.getInfluence(req.query);
@@ -94,22 +94,22 @@ router.get(
   })
 );
 
-// GET /api/analytics/communities (BT5 - UC-13, Role: Analyst, Admin)
+// GET /api/analytics/communities (BT5 - UC-13, Role: Admin)
 router.get(
   '/analytics/communities',
   requireAuth,
-  requireRole('analyst', 'admin'),
+  requireRole('admin'),
   asyncH(async (_req, res) => {
     const data = await analyticsService.getCommunities();
     return ok(res, data);
   })
 );
 
-// GET /api/analytics/spread/:postId (BT5 - UC-14, Role: Analyst, Admin)
+// GET /api/analytics/spread/:postId (BT5 - UC-14, Role: Admin)
 router.get(
   '/analytics/spread/:postId',
   requireAuth,
-  requireRole('analyst', 'admin'),
+  requireRole('admin'),
   asyncH(async (req, res) => {
     const data = await analyticsService.getSpreadTree(req.params.postId);
     return ok(res, data);
@@ -127,11 +127,11 @@ router.get(
   })
 );
 
-// GET /api/stats (UC-16, Role: Analyst, Admin)
+// GET /api/stats (UC-16, Role: Admin)
 router.get(
   '/stats',
   requireAuth,
-  requireRole('analyst', 'admin'),
+  requireRole('admin'),
   asyncH(async (_req, res) => {
     const data = await analyticsService.getStats();
     return ok(res, data);

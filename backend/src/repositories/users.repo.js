@@ -36,6 +36,19 @@ export async function list({ q = '', skip = 0, limit = 20 }) {
   return rows.map((r) => toProps(r, 'u'));
 }
 
+export async function adminList({ q = '', role = '', status = '', skip = 0, limit = 20 } = {}) {
+  const params = { q: q.toLowerCase(), role, status, skip, limit };
+  const [rows, countRows] = await Promise.all([read(users.adminList, params), read(users.adminCount, params)]);
+  return {
+    items: rows.map((r) => ({
+      user: toProps(r, 'u'),
+      followers: Number(r.followers ?? 0),
+      posts: Number(r.posts ?? 0),
+    })),
+    total: Number(countRows[0]?.total ?? 0),
+  };
+}
+
 export async function update(id, { fullName, bio, country, email }) {
   const rows = await write(users.update, {
     id,
@@ -57,9 +70,17 @@ export async function setRole(id, role) {
   return toProps(rows[0], 'u');
 }
 
+export async function setPassword(id, passwordHash) {
+  const rows = await write(users.setPassword, { id, passwordHash });
+  return rows.length > 0;
+}
+
+// Trả về id các bài viết của người khác cần tính lại bộ đếm sau khi xóa
 export async function remove(id) {
+  const touched = await read(users.touchedPosts, { id });
+  await write(users.removePosts, { id });
   await write(users.remove, { id });
-  return true;
+  return touched.map((r) => r.id);
 }
 
 export async function profileStats(id) {

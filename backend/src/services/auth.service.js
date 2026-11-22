@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import * as usersRepo from '../repositories/users.repo.js';
 import { signToken } from '../middlewares/auth.js';
-import { Conflict, Unauth, Forbidden, NotFound } from '../utils/errors.js';
+import { Conflict, Unauth, Locked, NotFound } from '../utils/errors.js';
 
 import { sanitizeUser } from './users.service.js';
 
@@ -39,7 +39,7 @@ export async function login({ username, password }) {
   }
 
   if (user.status === 'locked') {
-    throw new Forbidden('Tài khoản của bạn đã bị khóa');
+    throw new Locked();
   }
 
   const isMatch = await bcrypt.compare(password, user.passwordHash || '');

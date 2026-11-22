@@ -40,7 +40,7 @@ for (const t of sampleTopics) {
   );
 }
 
-console.log('Seeding Demo Accounts (admin, analyst, alice)...');
+console.log('Seeding Demo Accounts (admin, alice)...');
 const createdUsers = [];
 for (const acc of DEMO_ACCOUNTS) {
   const id = `usr_${acc.username}`;
@@ -185,4 +185,4 @@ for (const p of samplePosts) {
 }
 
 await client.close();
-console.log('✅ Mini-seed complete! Demo accounts: admin / analyst / alice (Password: Passw0rd!)');
+console.log('✅ Mini-seed complete! Demo accounts: admin / alice (Password: Passw0rd!)');

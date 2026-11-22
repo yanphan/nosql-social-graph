@@ -5,11 +5,12 @@ export async function getFriendRecommendations(userId, limit = 10) {
   const suggestions = await analyticsRepo.friendSuggestions(userId, l);
 
   const formatted = suggestions.map((u) => {
-    let reason = 'Gợi ý kết nối';
+    // Kết nối chung: người mình đang theo dõi cũng đang theo dõi tài khoản được gợi ý
+    let reason = 'Gợi ý theo dõi';
     if (u.mutual > 0 && u.sharedTopics > 0) {
-      reason = `${u.mutual} bạn chung & ${u.sharedTopics} chủ đề cùng quan tâm`;
+      reason = `${u.mutual} kết nối chung, ${u.sharedTopics} chủ đề cùng quan tâm`;
     } else if (u.mutual > 0) {
-      reason = `${u.mutual} bạn chung`;
+      reason = `${u.mutual} kết nối chung`;
     } else if (u.sharedTopics > 0) {
       reason = `${u.sharedTopics} chủ đề cùng quan tâm`;
     }
@@ -20,6 +21,7 @@ export async function getFriendRecommendations(userId, limit = 10) {
       mutual: u.mutual,
       sharedTopics: u.sharedTopics,
       score: u.score,
+      source: 'graph', // xếp hạng theo kết nối chung và chủ đề chung
       reason,
     };
   });
@@ -39,6 +41,8 @@ export async function getFriendRecommendations(userId, limit = 10) {
           mutual: 0,
           sharedTopics: 0,
           score: pop.followers ?? 0,
+          followers: pop.followers ?? 0,
+          source: 'popular', // cold start: chưa có kết nối chung, lấy người nhiều follower
           reason: `Người nổi bật (${pop.followers ?? 0} người theo dõi)`,
         });
         existingIds.add(pop.id);

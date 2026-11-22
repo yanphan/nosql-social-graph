@@ -7,11 +7,15 @@ import * as integrity from '../../../database/lib/integrity.js';
 import * as importer from '../../../database/lib/importer.js';
 import * as exporter from '../../../database/lib/exporter.js';
 import { signToken } from '../middlewares/auth.js';
+import * as adminRepo from '../repositories/admin.repo.js';
+import * as moderationRepo from '../repositories/moderation.repo.js';
 
 vi.mock('../../../database/lib/backup.js');
 vi.mock('../../../database/lib/integrity.js');
 vi.mock('../../../database/lib/importer.js');
 vi.mock('../../../database/lib/exporter.js');
+vi.mock('../repositories/admin.repo.js');
+vi.mock('../repositories/moderation.repo.js');
 vi.mock('../db/graph.js', () => ({
   read: vi.fn().mockResolvedValue([{ c: 100 }]),
   write: vi.fn().mockResolvedValue([]),
@@ -44,6 +48,45 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
       .get('/api/admin/audit')
       .set('Authorization', `Bearer ${userToken}`);
     expect(res3.status).toBe(403);
+  });
+
+  // --- Tổng quan (UC-16) ---
+  it('GET /api/admin/overview -> số liệu đồ thị + nội dung bị gỡ trong 7 ngày + bản sao lưu gần nhất', async () => {
+    const now = Date.now();
+    adminRepo.overview.mockResolvedValue({
+      users: { total: 10, locked: 2, admins: 1, newWeek: 1, newPrevWeek: 0 },
+      posts: { total: 30, newWeek: 5, newPrevWeek: 4 },
+      edges: { FOLLOWS: 20 },
+      totalEdges: 20,
+      emptyTopics: { count: 1, names: ['a'] },
+      activity: [],
+    });
+    adminRepo.degreeBuckets.mockResolvedValue([{ degree: 0, users: 3 }]);
+    moderationRepo.list.mockResolvedValue([
+      { at: now - 1000, action: 'remove_post' },
+      { at: now - 2000, action: 'remove_comment' },
+      { at: now - 30 * 86400000, action: 'remove_post' }, // quá 7 ngày, không tính
+    ]);
+    backup.listBackups.mockResolvedValue([
+      { file: 'backup-2.json', fullPath: '/srv/backups/backup-2.json', createdAt: now, auto: false, nodes: 40, edges: 20 },
+    ]);
+
+    const res = await request(app).get('/api/admin/overview').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.users.locked).toBe(2);
+    expect(res.body.data.moderation).toEqual({ postsRemovedWeek: 1, commentsRemovedWeek: 1 });
+    expect(res.body.data.backups.count).toBe(1);
+    expect(res.body.data.backups.last.file).toBe('backup-2.json');
+    expect(res.body.data.backups.last.fullPath).toBeUndefined();
+    // Biểu đồ chỉ gồm các ngày trọn vẹn: ngày cuối kết thúc trước 0 giờ hôm nay
+    const { from, days } = adminRepo.overview.mock.calls[0][0];
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    expect(from + days * 86400000).toBe(today.getTime());
+
+    const forbidden = await request(app).get('/api/admin/overview').set('Authorization', `Bearer ${userToken}`);
+    expect(forbidden.status).toBe(403);
   });
 
   // --- Integrity Check (UC-15) ---
@@ -116,7 +159,7 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
   });
 
   it('POST /api/admin/restore -> file không tồn tại trả về 404 NOT_FOUND', async () => {
-    backup.restore.mockRejectedValue(new Error('File sao lưu không tồn tại'));
+    backup.restore.mockRejectedValue(Object.assign(new Error('File sao lưu không tồn tại'), { code: 'NOT_FOUND' }));
 
     const res = await request(app)
       .post('/api/admin/restore')
@@ -128,16 +171,49 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
-  // --- Seed (UC-15) ---
-  it('POST /api/admin/seed -> Kích hoạt seed mức S thành công', async () => {
+  it('POST /api/admin/restore -> thất bại thì báo rõ lý do (không ẩn thành "Lỗi hệ thống")', async () => {
+    backup.restore.mockRejectedValue(
+      Object.assign(new Error('Phục hồi thất bại: lệch số liệu. Dữ liệu đã được đưa về trạng thái trước khi phục hồi.'), {
+        code: 'RESTORE_FAILED',
+      })
+    );
     const res = await request(app)
-      .post('/api/admin/seed')
+      .post('/api/admin/restore')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ scale: 'S' });
+      .send({ file: 'backup-1.json' });
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('RESTORE_FAILED');
+    expect(res.body.error.message).toContain('trạng thái trước khi phục hồi');
+  });
 
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-    expect(res.body.data.scale).toBe('S');
+  it('Chỉ một thao tác nặng chạy một lúc: sao lưu khi đang phục hồi -> 409', async () => {
+    let finish;
+    backup.restore.mockReturnValue(new Promise((r) => (finish = r)));
+    const restoring = request(app)
+      .post('/api/admin/restore')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ file: 'backup-1.json' })
+      .then((r) => r);
+    await new Promise((r) => setTimeout(r, 50));
+    const second = await request(app).post('/api/admin/backup').set('Authorization', `Bearer ${adminToken}`);
+    expect(second.status).toBe(409);
+    expect(second.body.error.message).toContain('phục hồi');
+    finish({ nodes: 1, edges: 0, matchesBackup: true });
+    expect((await restoring).status).toBe(200);
+  });
+
+  it('DELETE /api/admin/backups/:file -> xóa bản sao lưu; tên lạ -> 400', async () => {
+    backup.deleteBackup.mockResolvedValue({ deleted: true, file: 'backup-1.json' });
+    const okRes = await request(app).delete('/api/admin/backups/backup-1.json').set('Authorization', `Bearer ${adminToken}`);
+    expect(okRes.status).toBe(200);
+    backup.deleteBackup.mockRejectedValue(Object.assign(new Error('Tên file sao lưu không hợp lệ'), { code: 'INVALID_NAME' }));
+    const bad = await request(app).delete('/api/admin/backups/..%2F.env').set('Authorization', `Bearer ${adminToken}`);
+    expect(bad.status).toBe(400);
+  });
+
+  it('POST /api/admin/seed -> đã bỏ khỏi giao diện quản trị (404)', async () => {
+    const res = await request(app).post('/api/admin/seed').set('Authorization', `Bearer ${adminToken}`).send({});
+    expect(res.status).toBe(404);
   });
 
   // --- Import / Export (UC-15) ---
@@ -152,7 +228,7 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
   });
 
   it('POST /api/admin/import -> upload file CSV users thành công', async () => {
-    importer.importCsv.mockResolvedValue({ inserted: 3 });
+    importer.importCsv.mockResolvedValue({ kind: 'User', rows: 1, skipped: 0, errors: [], ms: 5 });
 
     const csvData = 'username,fullName,email,passwordHash,role\nu1,User 1,u1@test.com,hash,user\n';
     const res = await request(app)
@@ -162,7 +238,30 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.data.inserted).toBe(3);
+    expect(res.body.data).toMatchObject({ format: 'csv', kind: 'User', rows: 1, skipped: 0 });
+    expect(importer.importCsv).toHaveBeenCalledWith('users', expect.any(String));
+  });
+
+  it('POST /api/admin/import -> file .txt hoặc CSV thiếu loại dữ liệu -> 400', async () => {
+    const txt = await request(app)
+      .post('/api/admin/import')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('x'), 'a.txt');
+    expect(txt.status).toBe(400);
+    const noKind = await request(app)
+      .post('/api/admin/import')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('id,name'), 'a.csv');
+    expect(noKind.status).toBe(400);
+    expect(importer.importCsv).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/admin/export -> loại dữ liệu lạ trả 400 thay vì 500', async () => {
+    exporter.exportCsv.mockRejectedValue(Object.assign(new Error('Loại dữ liệu không hợp lệ'), { code: 'INVALID_KIND' }));
+    const res = await request(app)
+      .get('/api/admin/export?format=csv&label=Hack')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
   });
 
   it('GET /api/admin/export -> Admin xuất dữ liệu graph JSON thành công', async () => {

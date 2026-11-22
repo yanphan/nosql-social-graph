@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app.js';
 import * as usersRepo from '../repositories/users.repo.js';
+import { findAuthState } from '../repositories/auth.repo.js';
+import { signToken } from '../middlewares/auth.js';
 
 vi.mock('../repositories/users.repo.js');
 
@@ -80,7 +82,7 @@ describe('Auth & Health API', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('POST /api/auth/login -> tài khoản bị khóa (locked) trả về 403 FORBIDDEN', async () => {
+  it('POST /api/auth/login -> tài khoản bị khóa (locked) trả về 403 ACCOUNT_LOCKED', async () => {
     usersRepo.findByUsername.mockResolvedValue({
       id: 'locked_user_id',
       username: 'lockeduser',
@@ -97,7 +99,7 @@ describe('Auth & Health API', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
-    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(res.body.error.code).toBe('ACCOUNT_LOCKED');
   });
 
   it('GET /api/auth/me -> không kèm token trả về 401 UNAUTHENTICATED', async () => {
@@ -105,5 +107,29 @@ describe('Auth & Health API', () => {
     expect(res.status).toBe(401);
     expect(res.body.ok).toBe(false);
     expect(res.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  describe('Token cũ sau khi tài khoản thay đổi', () => {
+    const aliceToken = signToken({ id: 'u_alice', username: 'alice', role: 'user' });
+    const adminToken = signToken({ id: 'u_admin', username: 'admin', role: 'admin' });
+
+    it('tài khoản bị khóa sau khi đăng nhập -> 403, token cũ không dùng được nữa', async () => {
+      findAuthState.mockResolvedValueOnce({ role: 'user', status: 'locked' });
+      const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${aliceToken}`);
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ACCOUNT_LOCKED');
+    });
+
+    it('admin bị hạ xuống user -> token cũ (role admin) bị chặn ở API quản trị', async () => {
+      findAuthState.mockResolvedValueOnce({ role: 'user', status: 'active' });
+      const res = await request(app).get('/api/admin/audit').set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('tài khoản đã bị xóa -> 401', async () => {
+      findAuthState.mockResolvedValueOnce(null);
+      const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${aliceToken}`);
+      expect(res.status).toBe(401);
+    });
   });
 });

@@ -103,6 +103,17 @@ export const postsService = {
     throw new Error(res.data?.error?.message || 'Không thể gửi bình luận');
   },
 
+  // Xóa bình luận (người viết bình luận hoặc tác giả bài). Bình luận định danh bằng userId + at.
+  deleteComment: async (postId, userId, at) => {
+    try {
+      const res = await api.delete(`/posts/${postId}/comments/${userId}/${at}`);
+      if (res.data?.ok) return res.data.data;
+      throw new Error(res.data?.error?.message);
+    } catch (err) {
+      throw new Error(err.response?.data?.error?.message || err.message || 'Không xóa được bình luận');
+    }
+  },
+
   // Chia sẻ bài viết
   sharePost: async (postId, via = '') => {
     const res = await api.post(`/posts/${postId}/share`, { via });
