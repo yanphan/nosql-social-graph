@@ -18,6 +18,28 @@ export const admin = {
   degreeBuckets: `MATCH (u:User) OPTIONAL MATCH (u)<-[:FOLLOWS]-(f:User)
     WITH u, count(f) AS d RETURN d AS degree, count(u) AS users ORDER BY degree`,
 
+  // Trang tổng quan của admin. $week = mốc 7 ngày trước, $prevWeek = mốc 14 ngày trước,
+  // $from = 0 giờ của ngày đầu tiên trong biểu đồ hoạt động, $day = độ dài một ngày (ms)
+  overview: {
+    users: `MATCH (u:User) RETURN count(u) AS total,
+      sum(CASE WHEN u.status = 'locked' THEN 1 ELSE 0 END) AS locked,
+      sum(CASE WHEN u.role = 'admin' THEN 1 ELSE 0 END) AS admins,
+      sum(CASE WHEN u.joinedAt >= $week THEN 1 ELSE 0 END) AS newWeek,
+      sum(CASE WHEN u.joinedAt >= $prevWeek AND u.joinedAt < $week THEN 1 ELSE 0 END) AS newPrevWeek`,
+    posts: `MATCH (p:Post) RETURN count(p) AS total,
+      sum(CASE WHEN p.createdAt >= $week THEN 1 ELSE 0 END) AS newWeek,
+      sum(CASE WHEN p.createdAt >= $prevWeek AND p.createdAt < $week THEN 1 ELSE 0 END) AS newPrevWeek`,
+    dailyUsers: `MATCH (u:User) WHERE u.joinedAt >= $from
+      RETURN toInteger((u.joinedAt - $from) / $day) AS d, count(u) AS c`,
+    dailyPosts: `MATCH (p:Post) WHERE p.createdAt >= $from
+      RETURN toInteger((p.createdAt - $from) / $day) AS d, count(p) AS c`,
+    // Tương tác: thích, bình luận, chia sẻ (đều có thuộc tính at)
+    dailyInteractions: `MATCH (:User)-[r:LIKED|COMMENTED|SHARED]->(:Post) WHERE r.at >= $from
+      RETURN toInteger((r.at - $from) / $day) AS d, count(r) AS c`,
+    emptyTopics: `MATCH (t:Topic) WHERE NOT (t)<-[:ABOUT]-(:Post)
+      RETURN count(t) AS c, collect(t.name)[0..5] AS names`,
+  },
+
   integrity: {
     selfFollow:     `MATCH (u:User)-[f:FOLLOWS]->(u) RETURN count(f) AS c`,
     dupFollow:      `MATCH (a:User)-[f:FOLLOWS]->(b:User) WITH a, b, count(f) AS n WHERE n > 1 RETURN count(*) AS c`,

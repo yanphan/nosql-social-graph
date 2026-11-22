@@ -4,6 +4,7 @@ import { EditTopicModal, DeleteTopicModal } from '@/components/admin/TopicModals
 import { ConfirmUserActionModal, ResetPasswordModal } from '@/components/admin/UserModals';
 import PostsPanel from '@/components/admin/PostsPanel';
 import SystemPanel from '@/components/admin/SystemPanel';
+import DashboardPanel from '@/components/admin/DashboardPanel';
 import {
   useDebounced,
   usePagedList,
@@ -1012,10 +1013,8 @@ export default function AdminPage() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   // Chart Hover State
-  const [activeBarIndex, setActiveBarIndex] = useState(null);
 
   // Data States
-  const [stats, setStats] = useState(null);
   // Danh sách người dùng: tìm kiếm + lọc + phân trang phía máy chủ (có tổng số)
   const [userSearch, setUserSearch] = useState('');
   const [userRole, setUserRole] = useState('');
@@ -1056,44 +1055,6 @@ export default function AdminPage() {
     if (topicPage > topicPages) setTopicPage(topicPages);
   }, [topicPage, topicPages]);
 
-  // Dữ liệu phân bố bậc nhóm lại theo khoảng để cột và số không bị đè lên nhau
-  const processedDegreeBuckets = useMemo(() => {
-    const raw = stats?.degreeBuckets;
-    if (!raw || !Array.isArray(raw) || raw.length === 0) {
-      return [];
-    }
-
-    // Nếu đã là dạng bucket khoảng
-    if (raw[0].bucket !== undefined) {
-      return raw.map((b) => ({
-        bucket: b.bucket,
-        users: Number(b.users ?? b.count ?? 0),
-      }));
-    }
-
-    // Nhóm thành các khoảng chuẩn log/power-law
-    const standardRanges = [
-      { bucket: '0', min: 0, max: 0, users: 0 },
-      { bucket: '1 - 5', min: 1, max: 5, users: 0 },
-      { bucket: '6 - 15', min: 6, max: 15, users: 0 },
-      { bucket: '16 - 30', min: 16, max: 30, users: 0 },
-      { bucket: '31 - 60', min: 31, max: 60, users: 0 },
-      { bucket: '61 - 120', min: 61, max: 120, users: 0 },
-      { bucket: '> 120', min: 121, max: Infinity, users: 0 },
-    ];
-
-    for (const item of raw) {
-      const deg = Number(item.degree ?? 0);
-      const count = Number(item.users ?? item.count ?? 0);
-      const target = standardRanges.find((r) => deg >= r.min && deg <= r.max);
-      if (target) {
-        target.users += count;
-      }
-    }
-
-    return standardRanges.filter((r) => r.users > 0 || r.bucket !== '0');
-  }, [stats?.degreeBuckets]);
-
   // Modals state
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const addUserTriggerRef = useRef(null);
@@ -1123,16 +1084,14 @@ export default function AdminPage() {
     toastTimerRef.current = setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
   };
 
-  // Số liệu tổng quan, chủ đề. Danh sách người dùng / bài viết tự tải theo bộ lọc của từng bảng.
+  // Chủ đề và người nổi bật (dùng ở tổng quan + tab chủ đề). Số liệu tổng quan do DashboardPanel tự tải. Danh sách người dùng / bài viết tự tải theo bộ lọc của từng bảng.
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [sData, tData, top] = await Promise.all([
-        adminApi.getStats(),
+      const [tData, top] = await Promise.all([
         adminApi.getTopics(),
         adminApi.getTopUsers(5).catch(() => []),
       ]);
-      setStats(sData);
       setTopicsList(tData || []);
       setTopUsers(top || []);
     } catch (err) {
@@ -1148,6 +1107,23 @@ export default function AdminPage() {
   useEffect(() => {
     if (!users.loading && !users.error && users.items.length === 0 && userPage > 1) setUserPage((p) => p - 1);
   }, [users.loading, users.error, users.items.length, userPage]);
+
+  // Tổng quan: bấm một mục "Cần chú ý" để mở đúng tab, đã lọc sẵn
+  const handleDashboardNavigate = (target) => {
+    if (target === 'locked-users') {
+      setUserSearch('');
+      setUserRole('');
+      setUserStatus('locked');
+      setActiveTab('users');
+    } else if (target === 'empty-topics') {
+      setTopicSearch('');
+      setTopicSort('fewest');
+      setSubTab('topics');
+      setActiveTab('topics_posts');
+    } else if (target === 'backups') {
+      setActiveTab('system');
+    }
+  };
 
   // Search Handler
   const handleSearch = async (q) => {
@@ -1216,16 +1192,7 @@ export default function AdminPage() {
   };
 
   // Người dùng nổi bật: số người theo dõi thật (GET /analytics/influence)
-  const topTopics = [...topicsList].slice(0, 5);
 
-  // Relationship breakdown counts
-  const followsCount = stats?.edges?.FOLLOWS ?? 24;
-  const postedCount = stats?.edges?.POSTED ?? 4;
-  const aboutCount = stats?.edges?.ABOUT ?? 4;
-  const totalRels = stats?.totalEdges ?? (followsCount + postedCount + aboutCount);
-  const followsPct = totalRels > 0 ? (followsCount / totalRels) * 100 : 70;
-  const postedPct = totalRels > 0 ? (postedCount / totalRels) * 100 : 15;
-  const aboutPct = totalRels > 0 ? (aboutCount / totalRels) * 100 : 15;
 
   return (
     <div className="min-h-screen bg-[#F3F5F9] bg-[radial-gradient(ellipse_100%_320px_at_50%_0%,rgba(239,244,255,0.6),transparent)] text-[#0F172A] flex font-sans antialiased">
@@ -1482,251 +1449,7 @@ export default function AdminPage() {
         <main className="flex-1 p-6 sm:p-8 max-w-[1200px] w-full mx-auto space-y-6">
           {/* TAB 1: TỔNG QUAN (DASHBOARD) */}
           {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              {/* Page Title & Quiet Refresh */}
-              <div className="flex items-center justify-between animate-fade-up">
-                <div>
-                  <h1 className="text-[24px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                    Tổng quan
-                  </h1>
-                  <p className="text-[14px] text-[#475569] mt-0.5">
-                    Số liệu mới nhất từ đồ thị mạng xã hội
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={loadAllData}
-                  className="h-9 px-3.5 rounded-[10px] bg-white hover:bg-slate-50 text-[#475569] hover:text-[#0F172A] border border-[#E5E9F0] text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press shadow-2xs"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-[#2563EB]' : ''}`} strokeWidth={1.5} />
-                  <span>Làm mới số liệu</span>
-                </button>
-              </div>
-
-              {/* 4 KPI Cards (Equal height with items-stretch, single-line legend for Kết nối) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
-                {/* 1. Người dùng */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-1">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium text-[#475569]">Người dùng</span>
-                      <Users className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    </div>
-                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                      <CountUp value={stats?.nodes?.User ?? 20} />
-                    </div>
-                  </div>
-                  <div className="text-[13px] text-[#64748B] pt-2">Đang hoạt động</div>
-                </div>
-
-                {/* 2. Bài viết */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-2">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium text-[#475569]">Bài viết</span>
-                      <FileText className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    </div>
-                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                      <CountUp value={stats?.nodes?.Post ?? 4} />
-                    </div>
-                  </div>
-                  <div className="text-[13px] text-[#64748B] pt-2">Đã gắn chủ đề</div>
-                </div>
-
-                {/* 3. Chủ đề */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium text-[#475569]">Chủ đề</span>
-                      <Hash className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    </div>
-                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                      <CountUp value={stats?.nodes?.Topic ?? 5} />
-                    </div>
-                  </div>
-                  <div className="text-[13px] text-[#64748B] pt-2">Dùng để lọc nội dung</div>
-                </div>
-
-                {/* 4. Kết nối (Merged with Segmented Bar & Matching Colored Dots) */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col justify-between h-full animate-fade-up stagger-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium text-[#475569]">Kết nối</span>
-                      <Share2 className="h-4 w-4 text-[#64748B]" strokeWidth={1.5} />
-                    </div>
-                    <div className="text-[32px] font-semibold text-[#0F172A] leading-none">
-                      <CountUp value={totalRels} />
-                    </div>
-                  </div>
-                  <div className="pt-2 space-y-1.5">
-                    {/* Segmented Bar */}
-                    <div className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5 bg-[#F1F5F9]">
-                      <div style={{ width: `${followsPct}%` }} className="bg-[#2563EB]" title={`Theo dõi: ${followsCount}`} />
-                      <div style={{ width: `${postedPct}%` }} className="bg-[#64748B]" title={`Đăng bài: ${postedCount}`} />
-                      <div style={{ width: `${aboutPct}%` }} className="bg-[#94A3B8]" title={`Chủ đề: ${aboutCount}`} />
-                    </div>
-                    {/* Legend on ONE line (12px, gap 12px between items, no trailing "·", shortened labels) */}
-                    <div className="flex items-center gap-3 text-[12px] text-[#64748B] pt-0.5 whitespace-nowrap overflow-hidden">
-                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> Theo dõi {followsCount}
-                      </span>
-                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#64748B]" /> Đăng bài {postedCount}
-                      </span>
-                      <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#94A3B8]" /> Chủ đề {aboutCount}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Degree Distribution Chart Card */}
-              <div className="p-6 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3 animate-fade-up stagger-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2 className="text-[15px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                      Phân bố số kết nối của người dùng
-                    </h2>
-                    <p className="text-[13px] text-[#475569] mt-0.5">
-                      Mỗi cột là số người dùng có cùng số kết nối.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Y-Axis Label Placed Top-Left above the chart to completely avoid tick overlap */}
-                <div className="text-[12px] font-medium text-[#64748B] pl-2 pt-1">
-                  Số người dùng
-                </div>
-
-                <div className="h-[260px] w-full">
-                  {loading && !stats ? (
-                    <div className="h-full flex items-center justify-center text-xs text-[#64748B]">
-                      <RefreshCw className="h-5 w-5 animate-spin text-[#2563EB] mb-2" />
-                    </div>
-                  ) : processedDegreeBuckets.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-xs text-[#64748B]">
-                      Chưa có dữ liệu phân bố kết nối
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={processedDegreeBuckets}
-                        margin={{ top: 20, right: 16, left: 0, bottom: 6 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E9F0" vertical={false} />
-                        <XAxis
-                          dataKey="bucket"
-                          tick={{ fontSize: 12, fill: '#475569' }}
-                          tickLine={false}
-                          axisLine={false}
-                          label={{ value: 'Khoảng số kết nối (bậc)', position: 'insideBottom', offset: -4, fontSize: 12, fill: '#64748B' }}
-                          height={32}
-                        />
-                        <YAxis
-                          allowDecimals={false}
-                          tick={{ fontSize: 12, fill: '#475569' }}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <Tooltip
-                          cursor={{ fill: '#EFF4FF', opacity: 0.6 }}
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const data = payload[0].payload;
-                              return (
-                                <div className="bg-[#0F172A] text-white px-3 py-1.5 rounded-[8px] text-xs tabular-nums shadow-md">
-                                  {data.bucket} kết nối: {data.users.toLocaleString('vi-VN')} người dùng
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar
-                          dataKey="users"
-                          maxBarSize={48}
-                          radius={[4, 4, 0, 0]}
-                          isAnimationActive={true}
-                          animationDuration={500}
-                          onMouseEnter={(_, index) => setActiveBarIndex(index)}
-                          onMouseLeave={() => setActiveBarIndex(null)}
-                        >
-                          {processedDegreeBuckets.map((entry, index) => (
-                            <Cell
-                              key={`bar-${index}`}
-                              fill="#2563EB"
-                              fillOpacity={activeBarIndex === index ? 1 : 0.85}
-                              className="transition-opacity duration-150 cursor-pointer"
-                            />
-                          ))}
-                          <LabelList
-                            dataKey="users"
-                            position="top"
-                            fill="#475569"
-                            fontSize={12}
-                            offset={6}
-                            formatter={(val) => val.toLocaleString('vi-VN')}
-                          />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </div>
-
-              {/* 2 cột: Người được theo dõi nhiều nhất & Chủ đề phổ biến */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Người được theo dõi nhiều nhất (số liệu thật) */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3 animate-fade-up stagger-3">
-                  <h3 className="text-[14px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                    Người được theo dõi nhiều nhất
-                  </h3>
-                  <div className="divide-y divide-[#E5E9F0]/60">
-                    {topUsers.map((u) => (
-                      <div key={u.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between text-[13px]">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <img
-                            src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
-                            className="w-7 h-7 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0]"
-                          />
-                          <div className="truncate">
-                            <div className="font-medium text-[#0F172A] truncate">{u.fullName}</div>
-                            <div className="text-[11px] text-[#64748B] tabular-nums">@{u.username}</div>
-                          </div>
-                        </div>
-                        <span className="text-[12px] text-[#475569] font-medium tabular-nums shrink-0 ml-3">
-                          {Number(u.followers ?? 0).toLocaleString('vi-VN')} người theo dõi
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Chủ đề phổ biến (với Matching Pastel Dots) */}
-                <div className="p-5 bg-white border border-[#E5E9F0] card-hover rounded-[16px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3 animate-fade-up stagger-4">
-                  <h3 className="text-[14px] font-semibold text-[#0F172A] tracking-[-0.01em]">
-                    Chủ đề phổ biến
-                  </h3>
-                  <div className="divide-y divide-[#E5E9F0]/60">
-                    {topTopics.map((t) => (
-                      <div key={t.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between text-[13px]">
-                        <div className="min-w-0 pr-3 flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getTopicColor(t.name) }} />
-                          <div>
-                            <div className="font-medium text-[#2563EB]">#{t.name}</div>
-                            <div className="text-[11px] text-[#64748B] truncate">{t.description || 'Chủ đề thảo luận'}</div>
-                          </div>
-                        </div>
-                        <span className="text-[12px] text-[#475569] font-medium tabular-nums shrink-0">
-                          {t.postCount ?? 8} bài viết
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <DashboardPanel topUsers={topUsers} topics={topicsList} onNavigate={handleDashboardNavigate} />
           )}
 
           {/* TAB 2: QUẢN LÝ NGƯỜI DÙNG */}

@@ -7,11 +7,15 @@ import * as integrity from '../../../database/lib/integrity.js';
 import * as importer from '../../../database/lib/importer.js';
 import * as exporter from '../../../database/lib/exporter.js';
 import { signToken } from '../middlewares/auth.js';
+import * as adminRepo from '../repositories/admin.repo.js';
+import * as moderationRepo from '../repositories/moderation.repo.js';
 
 vi.mock('../../../database/lib/backup.js');
 vi.mock('../../../database/lib/integrity.js');
 vi.mock('../../../database/lib/importer.js');
 vi.mock('../../../database/lib/exporter.js');
+vi.mock('../repositories/admin.repo.js');
+vi.mock('../repositories/moderation.repo.js');
 vi.mock('../db/graph.js', () => ({
   read: vi.fn().mockResolvedValue([{ c: 100 }]),
   write: vi.fn().mockResolvedValue([]),
@@ -44,6 +48,45 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
       .get('/api/admin/audit')
       .set('Authorization', `Bearer ${userToken}`);
     expect(res3.status).toBe(403);
+  });
+
+  // --- Tổng quan (UC-16) ---
+  it('GET /api/admin/overview -> số liệu đồ thị + nội dung bị gỡ trong 7 ngày + bản sao lưu gần nhất', async () => {
+    const now = Date.now();
+    adminRepo.overview.mockResolvedValue({
+      users: { total: 10, locked: 2, admins: 1, newWeek: 1, newPrevWeek: 0 },
+      posts: { total: 30, newWeek: 5, newPrevWeek: 4 },
+      edges: { FOLLOWS: 20 },
+      totalEdges: 20,
+      emptyTopics: { count: 1, names: ['a'] },
+      activity: [],
+    });
+    adminRepo.degreeBuckets.mockResolvedValue([{ degree: 0, users: 3 }]);
+    moderationRepo.list.mockResolvedValue([
+      { at: now - 1000, action: 'remove_post' },
+      { at: now - 2000, action: 'remove_comment' },
+      { at: now - 30 * 86400000, action: 'remove_post' }, // quá 7 ngày, không tính
+    ]);
+    backup.listBackups.mockResolvedValue([
+      { file: 'backup-2.json', fullPath: '/srv/backups/backup-2.json', createdAt: now, auto: false, nodes: 40, edges: 20 },
+    ]);
+
+    const res = await request(app).get('/api/admin/overview').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.users.locked).toBe(2);
+    expect(res.body.data.moderation).toEqual({ postsRemovedWeek: 1, commentsRemovedWeek: 1 });
+    expect(res.body.data.backups.count).toBe(1);
+    expect(res.body.data.backups.last.file).toBe('backup-2.json');
+    expect(res.body.data.backups.last.fullPath).toBeUndefined();
+    // Biểu đồ chỉ gồm các ngày trọn vẹn: ngày cuối kết thúc trước 0 giờ hôm nay
+    const { from, days } = adminRepo.overview.mock.calls[0][0];
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    expect(from + days * 86400000).toBe(today.getTime());
+
+    const forbidden = await request(app).get('/api/admin/overview').set('Authorization', `Bearer ${userToken}`);
+    expect(forbidden.status).toBe(403);
   });
 
   // --- Integrity Check (UC-15) ---

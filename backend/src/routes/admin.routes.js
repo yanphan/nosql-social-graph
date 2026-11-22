@@ -86,6 +86,17 @@ router.get(
   })
 );
 
+// GET /api/admin/overview (UC-16): số liệu trang tổng quan của admin
+router.get(
+  '/overview',
+  requireAuth,
+  requireRole('admin'),
+  asyncH(async (_req, res) => {
+    const data = await adminService.getOverview();
+    return ok(res, data);
+  })
+);
+
 // GET /api/admin/integrity (UC-15)
 router.get(
   '/integrity',
