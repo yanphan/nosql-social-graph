@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import * as usersService from '../services/users.service.js';
+import * as postsService from '../services/posts.service.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { requireRole } from '../middlewares/rbac.js';
 import { validate } from '../middlewares/validate.js';
@@ -63,6 +64,16 @@ router.post(
   asyncH(async (req, res) => {
     const data = await usersService.createUser(req.body);
     return ok(res, data, 201);
+  })
+);
+
+// GET /api/users/by-username/:username (trang cá nhân /u/:username)
+router.get(
+  '/by-username/:username',
+  requireAuth,
+  asyncH(async (req, res) => {
+    const data = await usersService.getUserProfileByUsername(req.params.username, req.user);
+    return ok(res, data);
   })
 );
 
@@ -141,6 +152,17 @@ router.get(
   asyncH(async (req, res) => {
     const { page, limit } = paginate(req.query);
     const data = await usersService.getUserFollowers(req.params.id, { page, limit }, req.user);
+    return ok(res, data);
+  })
+);
+
+// GET /api/users/:id/shares (bài người này đã chia sẻ, mới nhất trước)
+router.get(
+  '/:id/shares',
+  requireAuth,
+  asyncH(async (req, res) => {
+    const { page, limit } = paginate(req.query);
+    const data = await postsService.listSharedBy(req.params.id, { page, limit }, req.user);
     return ok(res, data);
   })
 );

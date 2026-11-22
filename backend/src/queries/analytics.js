@@ -50,17 +50,25 @@ export const analytics = {
     WHERE a.id <> me.id
     OPTIONAL MATCH (me)-[:FOLLOWS]->(f:User)-[:LIKED]->(p)
     OPTIONAL MATCH (p)-[:ABOUT]->(top:Topic)
-    WITH p, a, collect(DISTINCT top.name) AS topics, interest, count(DISTINCT f) AS friendLikes
+    WITH me, p, a, collect(DISTINCT top.name) AS topics, interest, count(DISTINCT f) AS friendLikes
+    OPTIONAL MATCH (me)-[sh:SHARED]->(p)
     RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
-           topics, friendLikes, interest, friendLikes*2 + interest*3 AS score
+           topics, friendLikes, interest, friendLikes*2 + interest*3 AS score, sh IS NOT NULL AS sharedByMe
     ORDER BY score DESC, p.createdAt DESC LIMIT $limit`,
 
   // Cold start: bài có nhiều like nhất trong cửa sổ thời gian
+  // $uid = người xem (có thể null) để biết đã thích / chia sẻ bài chưa
   popularPosts: `MATCH (a:User)-[:POSTED]->(p:Post) WHERE p.createdAt >= $since
+    WITH a, p ORDER BY p.likeCount DESC LIMIT $limit
     OPTIONAL MATCH (p)-[:ABOUT]->(top:Topic)
+    WITH a, p, collect(DISTINCT top.name) AS topics
+    OPTIONAL MATCH (:User {id:$uid})-[l:LIKED]->(p)
+    WITH a, p, topics, l
+    OPTIONAL MATCH (:User {id:$uid})-[sh:SHARED]->(p)
     RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
-           collect(DISTINCT top.name) AS topics, 0 AS friendLikes, 0 AS interest, p.likeCount AS score
-    ORDER BY p.likeCount DESC LIMIT $limit`,
+           topics, 0 AS friendLikes, 0 AS interest, p.likeCount AS score,
+           l IS NOT NULL AS likedByMe, sh IS NOT NULL AS sharedByMe
+    ORDER BY p.likeCount DESC`,
 
   // BT5
   topFollowers: `MATCH (u:User)<-[:FOLLOWS]-(f:User)

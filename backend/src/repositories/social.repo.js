@@ -38,6 +38,11 @@ export async function share(uid, pid, via = null) {
   return true;
 }
 
+export async function unshare(uid, pid) {
+  await write(interactions.unshare, { uid, pid });
+  return true;
+}
+
 export async function comments(pid, { skip = 0, limit = 20 } = {}) {
   const rows = await read(interactions.comments, { pid, skip, limit });
   return rows.map((r) => ({

@@ -32,9 +32,11 @@ const moderationSchema = z
   })
   .default({});
 
-const shareSchema = z.object({
-  via: z.string().optional(),
-});
+const shareSchema = z
+  .object({
+    via: z.string().trim().max(64).optional(),
+  })
+  .default({});
 
 // GET /api/posts?topic=&authorId=&days=&page=&limit=
 router.get(
@@ -161,7 +163,17 @@ router.post(
   requireAuth,
   validate(shareSchema, 'body'),
   asyncH(async (req, res) => {
-    const data = await postsService.sharePost(req.params.id, req.body.via, req.user);
+    const data = await postsService.sharePost(req.params.id, req.body?.via, req.user);
+    return ok(res, data);
+  })
+);
+
+// DELETE /api/posts/:id/share  (hủy chia sẻ)
+router.delete(
+  '/:id/share',
+  requireAuth,
+  asyncH(async (req, res) => {
+    const data = await postsService.unsharePost(req.params.id, req.user);
     return ok(res, data);
   })
 );

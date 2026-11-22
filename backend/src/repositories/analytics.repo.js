@@ -92,6 +92,8 @@ export async function postSuggestions(uid, limit = 10) {
           fullName: r.authorFullName ?? '',
         },
         topics: Array.isArray(r.topics) ? r.topics : [],
+        likedByMe: false, // BT4 đã loại bài người xem đã thích
+        sharedByMe: Boolean(r.sharedByMe),
       },
       friendLikes: Number(r.friendLikes ?? 0),
       interest: Number(r.interest ?? 0),
@@ -100,8 +102,8 @@ export async function postSuggestions(uid, limit = 10) {
   });
 }
 
-export async function popularPosts(since = 0, limit = 10) {
-  const rows = await read(analytics.popularPosts, { since, limit });
+export async function popularPosts(since = 0, limit = 10, uid = null) {
+  const rows = await read(analytics.popularPosts, { since, limit, uid });
   return rows.map((r) => {
     const p = toProps(r.p);
     return {
@@ -119,6 +121,8 @@ export async function popularPosts(since = 0, limit = 10) {
           fullName: r.authorFullName ?? '',
         },
         topics: Array.isArray(r.topics) ? r.topics : [],
+        likedByMe: Boolean(r.likedByMe),
+        sharedByMe: Boolean(r.sharedByMe),
       },
       friendLikes: 0,
       interest: 0,

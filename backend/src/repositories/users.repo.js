@@ -86,12 +86,13 @@ export async function remove(id) {
 export async function profileStats(id) {
   const rows = await read(users.profileStats, { id });
   if (!rows.length) return null;
-  const { u, followers, following, posts: postCount } = rows[0];
+  const { u, followers, following, posts: postCount, shares } = rows[0];
   return {
     user: u?.properties ?? u,
     followers: Number(followers ?? 0),
     following: Number(following ?? 0),
     posts: Number(postCount ?? 0),
+    shares: Number(shares ?? 0),
   };
 }
 
