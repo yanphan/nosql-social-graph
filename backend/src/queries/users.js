@@ -45,8 +45,9 @@ export const users = {
   profileStats: `MATCH (u:User {id:$id})
     OPTIONAL MATCH (u)<-[:FOLLOWS]-(f:User) WITH u, count(f) AS followers
     OPTIONAL MATCH (u)-[:FOLLOWS]->(g:User) WITH u, followers, count(g) AS following
-    OPTIONAL MATCH (u)-[:POSTED]->(p:Post)
-    RETURN u, followers, following, count(p) AS posts`,
+    OPTIONAL MATCH (u)-[:POSTED]->(p:Post) WITH u, followers, following, count(p) AS posts
+    OPTIONAL MATCH (u)-[s:SHARED]->(:Post)
+    RETURN u, followers, following, posts, count(s) AS shares`,
 
   followers: `MATCH (:User {id:$id})<-[f:FOLLOWS]-(x:User) RETURN x, f.since AS since ORDER BY since DESC SKIP $skip LIMIT $limit`,
   following: `MATCH (:User {id:$id})-[f:FOLLOWS]->(x:User) RETURN x, f.since AS since ORDER BY since DESC SKIP $skip LIMIT $limit`,

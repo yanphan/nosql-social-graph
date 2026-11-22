@@ -80,6 +80,14 @@ export default function App() {
             </RequireRole>
           }
         />
+        <Route
+          path="/u/:username"
+          element={
+            <RequireRole roles={['user', 'admin']}>
+              <MainLayout view="profile" />
+            </RequireRole>
+          }
+        />
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/admin"

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Heart, 
   MessageCircle, 
@@ -35,7 +36,13 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
   const [commentTotal, setCommentTotal] = useState(() => post.commentCount ?? comments.length);
   const [commentLikes, setCommentLikes] = useState({});
   const [newComment, setNewComment] = useState('');
-  const [copied, setCopied] = useState(false);
+  // Chia sẻ (cạnh SHARED) một chiều: muốn bỏ thì "Xóa bài chia sẻ" ở trang cá nhân. Không chia sẻ bài của chính mình
+  const [shared, setShared] = useState(post.sharedByMe ?? false);
+  const [shareCount, setShareCount] = useState(post.shareCount || 0);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const isOwnPost = Boolean(currentUser?.id) && post.author?.id === currentUser.id;
+  const authorLink = `/u/${encodeURIComponent(post.author?.username || '')}`;
 
   // Bình luận thật: tải trang đầu khi mở, sau đó "Xem thêm" tải tiếp từng trang
   const COMMENTS_PER_PAGE = 20;
@@ -90,6 +97,25 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
       setTimeout(() => setLikeBounce(false), 200);
       setLikeCount((c) => c + 1);
       postsService.likePost(post.id).catch(() => {});
+    }
+  };
+
+  const handleShare = async () => {
+    if (isOwnPost || shareBusy || shared) return;
+    setShareError('');
+    setShared(true);
+    setShareCount((c) => c + 1);
+    if (!isRealPost) return; // bài mẫu: chỉ đổi trên giao diện
+    setShareBusy(true);
+    try {
+      const res = await postsService.sharePost(post.id);
+      setShareCount(res.shareCount);
+    } catch (err) {
+      setShared(false);
+      setShareCount((c) => Math.max(0, c - 1));
+      setShareError(err.message);
+    } finally {
+      setShareBusy(false);
     }
   };
 
@@ -178,19 +204,23 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
       {/* 1. HEADER: Avatar tròn (2px white ring + 1px border) + Tên tác giả + Nổi bật + Thời gian + Menu 3 chấm */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <img
-            src={post.author?.avatar}
-            alt={post.author?.fullName}
-            className="w-10 h-10 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
-          />
+          <Link to={authorLink} tabIndex={-1} aria-hidden="true" className="shrink-0">
+            <img
+              src={post.author?.avatar}
+              alt=""
+              className="w-10 h-10 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0]"
+            />
+          </Link>
 
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h3 
-                className="font-semibold text-[15px] text-[#0F172A] hover:text-[#2563EB] cursor-pointer leading-snug tracking-tight"
-                title={post.author?.country === 'VN' ? 'Hà Nội, Việt Nam' : 'San Francisco, Hoa Kỳ'}
-              >
-                {post.author?.fullName}
+              <h3 className="font-semibold text-[15px] text-[#0F172A] leading-snug tracking-tight">
+                <Link
+                  to={authorLink}
+                  className="hover:text-[#2563EB] hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                >
+                  {post.author?.fullName}
+                </Link>
               </h3>
               
               {/* Verified badge: chỉ hiện khi author.isVerified === true */}
@@ -231,16 +261,6 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 bg-white text-[#475569] shadow-md border border-[#E5E9F0] rounded-[12px] p-1.5 animate-in fade-in zoom-in-95 duration-120">
-            <DropdownMenuItem 
-              onClick={() => {
-                navigator.clipboard?.writeText(window.location.href);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              className="text-xs cursor-pointer rounded-lg font-medium py-2"
-            >
-              {copied ? '✓ Đã sao chép liên kết' : 'Sao chép liên kết'}
-            </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={() => setBookmarked(!bookmarked)}
               className="text-xs cursor-pointer rounded-lg font-medium py-2"
@@ -326,17 +346,34 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
           <span className="tabular-nums">{commentCount}</span>
         </button>
 
-        {/* Share Button */}
+        {/* Share Button: tạo / bỏ cạnh SHARED, hiện số lượt chia sẻ */}
         <button
-          onClick={() => {
-            navigator.clipboard?.writeText(window.location.href);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }}
-          className="h-8 px-2.5 rounded-lg text-xs font-medium text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF] flex items-center gap-1.5 transition-colors duration-150 btn-press"
-          title="Chia sẻ"
+          type="button"
+          onClick={handleShare}
+          disabled={isOwnPost || shareBusy || shared}
+          aria-pressed={shared}
+          aria-label={
+            isOwnPost
+              ? `Chia sẻ (${shareCount}). Không thể chia sẻ bài của chính bạn`
+              : shared
+                ? `Đã chia sẻ (${shareCount}). Xóa bài chia sẻ trong trang cá nhân của bạn`
+                : `Chia sẻ (${shareCount})`
+          }
+          title={
+            isOwnPost
+              ? 'Không thể chia sẻ bài viết của chính bạn'
+              : shared
+                ? 'Đã chia sẻ. Muốn xóa, vào trang cá nhân > Đã chia sẻ'
+                : 'Chia sẻ'
+          }
+          className={`h-8 px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors duration-150 btn-press disabled:cursor-default ${
+            shared
+              ? 'text-[#2563EB] bg-[#EFF4FF]'
+              : 'text-[#64748B] enabled:hover:text-[#2563EB] enabled:hover:bg-[#EFF4FF]'
+          }`}
         >
-          <Share2 className="h-4 w-4" />
+          <Share2 className="h-4 w-4" aria-hidden="true" />
+          <span className={`tabular-nums ${shared ? 'font-semibold' : ''}`}>{shareCount}</span>
         </button>
 
         {/* Bookmark Button */}
@@ -352,6 +389,11 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
           <Bookmark className={`h-4 w-4 ${bookmarked ? 'fill-[#2563EB] text-[#2563EB]' : ''}`} />
         </button>
       </div>
+      {shareError && (
+        <p role="alert" className="text-xs text-rose-700 -mt-2">
+          {shareError}
+        </p>
+      )}
 
       {/* 4. PREVIEW OR EXPANDED COMMENTS */}
       {/* 4a. Collapsed: Preview on separate lines */}

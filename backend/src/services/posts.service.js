@@ -3,6 +3,7 @@ import * as postsRepo from '../repositories/posts.repo.js';
 import * as topicsRepo from '../repositories/topics.repo.js';
 import * as socialRepo from '../repositories/social.repo.js';
 import * as moderationRepo from '../repositories/moderation.repo.js';
+import * as usersRepo from '../repositories/users.repo.js';
 import { NotFound, Forbidden, Invalid } from '../utils/errors.js';
 import { pageOf } from '../utils/http.js';
 
@@ -258,13 +259,39 @@ export async function addComment(postId, text, user) {
   };
 }
 
+// Tab "Đã chia sẻ" ở trang cá nhân: [{ post, sharedAt }]
+export async function listSharedBy(userId, { page = 1, limit = 20 }, viewer = null) {
+  const target = await usersRepo.findById(userId);
+  if (!target) {
+    throw new NotFound('Người dùng không tồn tại');
+  }
+  const rows = await postsRepo.sharedBy({ uid: userId, me: viewer?.id || null, skip: (page - 1) * limit, limit: limit + 1 });
+  return pageOf(rows, { page, limit });
+}
+
+// Chia sẻ: mỗi người một lần mỗi bài (MERGE), hủy được. Không chia sẻ bài của chính mình.
+// via = id người mà mình thấy bài qua họ (dựng cây lan truyền); bỏ qua nếu là chính mình.
 export async function sharePost(postId, via, user) {
   const post = await postsRepo.findById(postId);
   if (!post) {
     throw new NotFound('Bài viết không tồn tại');
   }
+  if (post.author?.id === user.id) {
+    throw new Invalid('Không thể chia sẻ bài viết của chính bạn');
+  }
 
-  await socialRepo.share(user.id, postId, via || null);
+  await socialRepo.share(user.id, postId, via && via !== user.id ? via : null);
   const counts = await socialRepo.recount(postId);
-  return { shareCount: counts.shareCount };
+  return { shared: true, shareCount: counts.shareCount };
+}
+
+export async function unsharePost(postId, user) {
+  const post = await postsRepo.findById(postId);
+  if (!post) {
+    throw new NotFound('Bài viết không tồn tại');
+  }
+
+  await socialRepo.unshare(user.id, postId);
+  const counts = await socialRepo.recount(postId);
+  return { shared: false, shareCount: counts.shareCount };
 }
