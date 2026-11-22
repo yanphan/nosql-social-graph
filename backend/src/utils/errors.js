@@ -18,6 +18,13 @@ export const Forbidden = class extends AppError {
   }
 };
 
+// Tài khoản bị khóa: tách khỏi FORBIDDEN để frontend biết phải đăng xuất
+export const Locked = class extends AppError {
+  constructor(m = 'Tài khoản của bạn đã bị khóa') {
+    super(403, 'ACCOUNT_LOCKED', m);
+  }
+};
+
 export const Unauth = class extends AppError {
   constructor(m = 'Chưa đăng nhập') {
     super(401, 'UNAUTHENTICATED', m);

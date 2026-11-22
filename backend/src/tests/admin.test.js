@@ -116,7 +116,7 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
   });
 
   it('POST /api/admin/restore -> file không tồn tại trả về 404 NOT_FOUND', async () => {
-    backup.restore.mockRejectedValue(new Error('File sao lưu không tồn tại'));
+    backup.restore.mockRejectedValue(Object.assign(new Error('File sao lưu không tồn tại'), { code: 'NOT_FOUND' }));
 
     const res = await request(app)
       .post('/api/admin/restore')
@@ -128,16 +128,49 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
-  // --- Seed (UC-15) ---
-  it('POST /api/admin/seed -> Kích hoạt seed mức S thành công', async () => {
+  it('POST /api/admin/restore -> thất bại thì báo rõ lý do (không ẩn thành "Lỗi hệ thống")', async () => {
+    backup.restore.mockRejectedValue(
+      Object.assign(new Error('Phục hồi thất bại: lệch số liệu. Dữ liệu đã được đưa về trạng thái trước khi phục hồi.'), {
+        code: 'RESTORE_FAILED',
+      })
+    );
     const res = await request(app)
-      .post('/api/admin/seed')
+      .post('/api/admin/restore')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ scale: 'S' });
+      .send({ file: 'backup-1.json' });
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('RESTORE_FAILED');
+    expect(res.body.error.message).toContain('trạng thái trước khi phục hồi');
+  });
 
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-    expect(res.body.data.scale).toBe('S');
+  it('Chỉ một thao tác nặng chạy một lúc: sao lưu khi đang phục hồi -> 409', async () => {
+    let finish;
+    backup.restore.mockReturnValue(new Promise((r) => (finish = r)));
+    const restoring = request(app)
+      .post('/api/admin/restore')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ file: 'backup-1.json' })
+      .then((r) => r);
+    await new Promise((r) => setTimeout(r, 50));
+    const second = await request(app).post('/api/admin/backup').set('Authorization', `Bearer ${adminToken}`);
+    expect(second.status).toBe(409);
+    expect(second.body.error.message).toContain('phục hồi');
+    finish({ nodes: 1, edges: 0, matchesBackup: true });
+    expect((await restoring).status).toBe(200);
+  });
+
+  it('DELETE /api/admin/backups/:file -> xóa bản sao lưu; tên lạ -> 400', async () => {
+    backup.deleteBackup.mockResolvedValue({ deleted: true, file: 'backup-1.json' });
+    const okRes = await request(app).delete('/api/admin/backups/backup-1.json').set('Authorization', `Bearer ${adminToken}`);
+    expect(okRes.status).toBe(200);
+    backup.deleteBackup.mockRejectedValue(Object.assign(new Error('Tên file sao lưu không hợp lệ'), { code: 'INVALID_NAME' }));
+    const bad = await request(app).delete('/api/admin/backups/..%2F.env').set('Authorization', `Bearer ${adminToken}`);
+    expect(bad.status).toBe(400);
+  });
+
+  it('POST /api/admin/seed -> đã bỏ khỏi giao diện quản trị (404)', async () => {
+    const res = await request(app).post('/api/admin/seed').set('Authorization', `Bearer ${adminToken}`).send({});
+    expect(res.status).toBe(404);
   });
 
   // --- Import / Export (UC-15) ---
@@ -152,7 +185,7 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
   });
 
   it('POST /api/admin/import -> upload file CSV users thành công', async () => {
-    importer.importCsv.mockResolvedValue({ inserted: 3 });
+    importer.importCsv.mockResolvedValue({ kind: 'User', rows: 1, skipped: 0, errors: [], ms: 5 });
 
     const csvData = 'username,fullName,email,passwordHash,role\nu1,User 1,u1@test.com,hash,user\n';
     const res = await request(app)
@@ -162,7 +195,30 @@ describe('Admin Data & System Management API (Sprint 3)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.data.inserted).toBe(3);
+    expect(res.body.data).toMatchObject({ format: 'csv', kind: 'User', rows: 1, skipped: 0 });
+    expect(importer.importCsv).toHaveBeenCalledWith('users', expect.any(String));
+  });
+
+  it('POST /api/admin/import -> file .txt hoặc CSV thiếu loại dữ liệu -> 400', async () => {
+    const txt = await request(app)
+      .post('/api/admin/import')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('x'), 'a.txt');
+    expect(txt.status).toBe(400);
+    const noKind = await request(app)
+      .post('/api/admin/import')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('id,name'), 'a.csv');
+    expect(noKind.status).toBe(400);
+    expect(importer.importCsv).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/admin/export -> loại dữ liệu lạ trả 400 thay vì 500', async () => {
+    exporter.exportCsv.mockRejectedValue(Object.assign(new Error('Loại dữ liệu không hợp lệ'), { code: 'INVALID_KIND' }));
+    const res = await request(app)
+      .get('/api/admin/export?format=csv&label=Hack')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
   });
 
   it('GET /api/admin/export -> Admin xuất dữ liệu graph JSON thành công', async () => {

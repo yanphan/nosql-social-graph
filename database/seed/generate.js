@@ -35,12 +35,6 @@ const ADMIN_DEMO_POSTS = [
   { content: 'Chính sách cộng đồng mới: Đảm bảo môi trường trao đổi học thuật, công nghệ và dữ liệu văn minh, bổ ích.', topics: ['devops', 'cybersecurity'] },
 ];
 
-const ANALYST_DEMO_POSTS = [
-  { content: 'Báo cáo phân tích mạng lưới: Mật độ phân cụm (Clustering Coefficient) và hệ số liên kết người dùng đang tăng trưởng ổn định.', topics: ['datascience', 'algorithms'] },
-  { content: 'Thống kê Top 5 chủ đề công nghệ được quan tâm nhất tháng: #ai, #nosql, #react, #falkordb, #machinelearning.', topics: ['datascience', 'ai'] },
-  { content: 'Đánh giá hiệu năng: 99.8% các truy vấn phân tích đồ thị phức tạp 3-hops hoàn thành trong dưới 25ms.', topics: ['performance', 'database'] },
-];
-
 const VI_SAMPLE_COMMENTS = [
   'Bài viết rất hữu ích và trực quan, cảm ơn bạn đã chia sẻ!',
   'Kiến trúc GraphBLAS chạy cực kỳ nhanh và mượt mà.',
@@ -155,10 +149,10 @@ export async function generateGraphData(scaleKey = 'DEFAULT') {
   const degreePool = [];
 
   // Seed degree pool with initial nodes (demo accounts have high degree for rich demo connectivity)
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < DEMO_ACCOUNTS.length; i++) {
     for (let k = 0; k < 20; k++) degreePool.push(userIds[i]);
   }
-  for (let i = 3; i < Math.min(20, userIds.length); i++) {
+  for (let i = DEMO_ACCOUNTS.length; i < Math.min(20, userIds.length); i++) {
     degreePool.push(userIds[i], userIds[i]);
   }
 
@@ -174,7 +168,6 @@ export async function generateGraphData(scaleKey = 'DEFAULT') {
   // Enrich demo accounts: Alice follows ~35 users, and gets followed by ~220 users
   const aliceId = 'usr_alice';
   const adminId = 'usr_admin';
-  const analystId = 'usr_analyst';
 
   // Alice following sample active users
   for (let i = 3; i < 38; i++) {
@@ -187,7 +180,7 @@ export async function generateGraphData(scaleKey = 'DEFAULT') {
     }
   }
 
-  // Many random users follow Alice, Admin, Analyst
+  // Many random users follow Alice and Admin
   for (let i = 10; i < 230; i++) {
     const s = userIds[i];
     const keyAlice = `${s}:${aliceId}`;
@@ -204,15 +197,6 @@ export async function generateGraphData(scaleKey = 'DEFAULT') {
       followPairs.add(keyAdmin);
       follows.push({ s, t: adminId, since: faker.number.int({ min: ninetyDaysAgo, max: now }) });
       degreePool.push(adminId);
-    }
-  }
-  for (let i = 100; i < 250; i++) {
-    const s = userIds[i];
-    const keyAnalyst = `${s}:${analystId}`;
-    if (!followPairs.has(keyAnalyst) && s !== analystId) {
-      followPairs.add(keyAnalyst);
-      follows.push({ s, t: analystId, since: faker.number.int({ min: ninetyDaysAgo, max: now }) });
-      degreePool.push(analystId);
     }
   }
 
@@ -330,7 +314,6 @@ export async function generateGraphData(scaleKey = 'DEFAULT') {
 
   addCuratedPosts(aliceId, ALICE_DEMO_POSTS);
   addCuratedPosts(adminId, ADMIN_DEMO_POSTS);
-  addCuratedPosts(analystId, ANALYST_DEMO_POSTS);
 
   // Generate remaining posts up to cfg.posts (30,000)
   const remainingPostsCount = cfg.posts - posts.length;
@@ -364,10 +347,10 @@ export async function generateGraphData(scaleKey = 'DEFAULT') {
   const likePairs = new Set();
 
   // Give Alice & Admin posts generous likes for great demo metrics (25-45 likes each)
-  const demoPostIds = posts.slice(0, ALICE_DEMO_POSTS.length + ADMIN_DEMO_POSTS.length + ANALYST_DEMO_POSTS.length).map((p) => p.id);
+  const demoPostIds = posts.slice(0, ALICE_DEMO_POSTS.length + ADMIN_DEMO_POSTS.length).map((p) => p.id);
   for (const demoPid of demoPostIds) {
     const postObj = posts.find((p) => p.id === demoPid);
-    const likers = faker.helpers.arrayElements(userList.slice(3), 35);
+    const likers = faker.helpers.arrayElements(userList.slice(DEMO_ACCOUNTS.length), 35);
     for (const liker of likers) {
       const key = `${liker.id}:${demoPid}`;
       if (!likePairs.has(key)) {

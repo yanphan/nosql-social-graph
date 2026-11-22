@@ -2,15 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   mockUsers, 
-  mockTopics, 
-  mockApi 
+  mockTopics
 } from '@/mock/mockData';
 import { authService } from '@/services/auth';
 import { topicsService } from '@/services/topics';
 import { postsService } from '@/services/posts';
 import { recommendService } from '@/services/recommend';
 import PostCard from '@/components/post/PostCard';
-import { Badge } from '@/components/ui/badge';
+import SuggestionsPage from '@/pages/SuggestionsPage';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +20,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -35,23 +33,23 @@ import {
   TrendingUp, 
   X, 
   CheckCircle2, 
-  UserPlus, 
-  UserCheck, 
+  Users,
+  Check,
+
   LogOut, 
-  ShieldCheck,
   Send,
   Sparkles,
-  Clock
+  Clock,
+  ShieldCheck
 } from 'lucide-react';
 import { getTopicColor } from '@/lib/topicColor';
 import '@/styles/tokens.css';
 
-export default function MainLayout() {
+export default function MainLayout({ view = 'feed' }) {
   const navigate = useNavigate();
-  const [currentUser] = useState(() => authService.getStoredUser() || mockApi.getCurrentUser());
+  const [currentUser] = useState(() => authService.getStoredUser());
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [followedUsers, setFollowedUsers] = useState({});
-  const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostTopic, setNewPostTopic] = useState('');
@@ -77,7 +75,7 @@ export default function MainLayout() {
         }
       })
       .catch((err) => {
-        console.error('Lỗi tải gợi ý kết bạn:', err);
+        console.error('Lỗi tải gợi ý theo dõi:', err);
       })
       .finally(() => {
         if (isMounted) setLoadingSuggestions(false);
@@ -218,6 +216,48 @@ export default function MainLayout() {
   // Given name (first word of fullName) e.g. "Alice Nguyen" -> "Alice"
   const givenName = currentUser?.fullName?.trim()?.split(' ')?.[0] || currentUser?.fullName || '';
 
+  // Một dòng gợi ý theo dõi (dùng ở cột phải và hộp thoại "Tất cả")
+  const renderSuggestion = (user) => {
+    const isFollowed = followedUsers[user.id] ?? false;
+
+    return (
+      <div key={user.id} className="flex items-center justify-between gap-3 group">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <img
+            src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=b6e3f4`}
+            alt={user.fullName || user.username}
+            className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] cursor-pointer">
+              {user.fullName || user.username}
+            </div>
+            {/* Secondary text: 13px #64748B chuẩn AA */}
+            <div className="text-[12px] text-[#64748B] truncate tabular-nums" title={user.reason}>
+              {user.reason || (user.mutual ? `${user.mutual} kết nối chung` : `${user.followers || 0} người theo dõi`)}
+            </div>
+          </div>
+        </div>
+
+        {/* Nút theo dõi dạng chữ (+ Theo dõi / ✓ Đang theo dõi), tránh icon kiểu "kết bạn" */}
+        <button
+          type="button"
+          onClick={() => toggleFollow(user.id)}
+          aria-pressed={isFollowed}
+          aria-label={`${isFollowed ? 'Bỏ theo dõi' : 'Theo dõi'} ${user.fullName || user.username}`}
+          className={`shrink-0 h-8 px-2.5 rounded-[10px] text-xs font-semibold flex items-center gap-1 transition-colors duration-150 btn-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 ${
+            isFollowed
+              ? 'bg-[#EFF4FF] text-[#1D4ED8] border border-[#BFDBFE]'
+              : 'border border-[#E5E9F0] text-[#1D4ED8] hover:bg-[#EFF4FF]'
+          }`}
+        >
+          {isFollowed ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
+          <span>{isFollowed ? 'Đang theo dõi' : 'Theo dõi'}</span>
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#F3F5F9] bg-[radial-gradient(ellipse_100%_320px_at_50%_0%,rgba(239,244,255,0.6),transparent)] text-[#0F172A] flex flex-col font-sans antialiased">
       {/* ======================================================== */}
@@ -238,27 +278,25 @@ export default function MainLayout() {
           </Link>
 
           {/* Navigation Pills Ở Giữa */}
-          <nav className="hidden md:flex items-center gap-1.5">
-            <button
-              onClick={() => setActiveTab('feed')}
-              className={`h-9 px-3.5 rounded-[10px] text-xs font-medium flex items-center gap-2 transition-colors duration-150 btn-press ${
-                activeTab === 'feed'
-                  ? 'bg-[#EFF4FF] text-[#2563EB]'
-                  : 'text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
-              }`}
-            >
-              <HomeIcon className="h-4 w-4" />
-              <span>Bảng tin</span>
-            </button>
-
-            <button
-              onClick={() => setIsGraphModalOpen(true)}
-              className="h-9 px-3.5 rounded-[10px] text-[#475569] hover:text-[#2563EB] hover:bg-[#EFF4FF] text-xs font-medium flex items-center gap-2 transition-colors duration-150 btn-press"
-              title="Khám phá mạng lưới đồ thị"
-            >
-              <Network className="h-4 w-4" />
-              <span>Đồ thị</span>
-            </button>
+          <nav className="hidden md:flex items-center gap-1.5" aria-label="Điều hướng chính">
+            {[
+              { to: '/', key: 'feed', label: 'Bảng tin', Icon: HomeIcon },
+              { to: '/suggestions', key: 'suggestions', label: 'Gợi ý theo dõi', Icon: Users },
+            ].map(({ to, key, label, Icon }) => (
+              <Link
+                key={key}
+                to={to}
+                aria-current={view === key ? 'page' : undefined}
+                className={`h-9 px-3.5 rounded-[10px] text-xs font-medium flex items-center gap-2 transition-colors duration-150 btn-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 ${
+                  view === key
+                    ? 'bg-[#EFF4FF] text-[#2563EB]'
+                    : 'text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
+                }`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                <span>{label}</span>
+              </Link>
+            ))}
           </nav>
 
           {/* Search Bar: 1px border, white background, Ctrl K hint */}
@@ -337,20 +375,21 @@ export default function MainLayout() {
                   </div>
                 </div>
 
-                {currentUser?.role === 'admin' && (
+                {/* Admin cũng là một thành viên: dùng giao diện này để đăng bài, có lối tắt về trang quản trị */}
+                {currentUser.role === 'admin' && (
                   <DropdownMenuItem
                     onClick={() => navigate('/admin')}
-                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-xs font-medium text-[#2563EB] hover:bg-[#EFF4FF]"
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-xs font-medium text-[#0F172A] hover:bg-[#F1F5F9]"
                   >
                     <ShieldCheck className="h-4 w-4" />
-                    <span>Trang quản trị (Admin)</span>
+                    <span>Trang quản trị</span>
                   </DropdownMenuItem>
                 )}
 
                 <DropdownMenuItem
                   onClick={() => {
                     authService.logout();
-                    navigate('/login');
+                    navigate('/login', { replace: true });
                   }}
                   className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-xs font-medium text-rose-600 hover:bg-rose-50"
                 >
@@ -367,15 +406,23 @@ export default function MainLayout() {
       {/* 2. MAIN LAYOUT: 3 CỘT (Sticky sidebars at top 88px)       */}
       {/* ======================================================== */}
       <div className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6 pb-20 sm:pb-8">
+        {view === 'suggestions' ? (
+          <SuggestionsPage followedUsers={followedUsers} onToggleFollow={toggleFollow} />
+        ) : (
         <div className="flex justify-center gap-6 w-full">
           {/* ================= CỘT TRÁI (LEFT SIDEBAR) ================= */}
           {/* Sticky at top 88px, Ẩn dưới 1024px */}
           <aside className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 sticky top-[88px] self-start space-y-4">
-            {/* Card 1: Gợi ý kết bạn */}
+            {/* Card 1: Gợi ý theo dõi */}
             <div className="bg-white rounded-[16px] p-5 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-4 animate-fade-up stagger-1">
               <div className="flex items-center justify-between">
-                <h3 className="text-[14px] font-semibold text-[#0F172A]">Gợi ý kết bạn</h3>
-                <span className="text-xs text-[#2563EB] hover:underline cursor-pointer font-medium">Tất cả</span>
+                <h3 className="text-[14px] font-semibold text-[#0F172A]">Gợi ý theo dõi</h3>
+                <Link
+                  to="/suggestions"
+                  className="text-xs text-[#2563EB] hover:underline font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                >
+                  Tất cả
+                </Link>
               </div>
 
               <div className="space-y-3">
@@ -396,68 +443,8 @@ export default function MainLayout() {
                     Chưa có gợi ý mới
                   </div>
                 ) : (
-                  friendSuggestions.map((user) => {
-                    const isFollowed = followedUsers[user.id] ?? false;
-
-                    return (
-                      <div key={user.id} className="flex items-center justify-between gap-3 group">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <img
-                            src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=b6e3f4`}
-                            alt={user.fullName || user.username}
-                            className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <div className="font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] cursor-pointer">
-                              {user.fullName || user.username}
-                            </div>
-                            {/* Secondary text: 13px #64748B chuẩn AA */}
-                            <div className="text-[12px] text-[#64748B] truncate tabular-nums" title={user.reason}>
-                              {user.reason || (user.mutual ? `${user.mutual} bạn chung` : `${user.followers || 0} người theo dõi`)}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Follow Button: UserPlus / UserCheck icon */}
-                        <button
-                          onClick={() => toggleFollow(user.id)}
-                          className={`h-8 w-8 rounded-[10px] flex items-center justify-center transition-all duration-150 btn-press ${
-                            isFollowed
-                              ? 'bg-[#EFF4FF] text-[#2563EB] border border-[#2563EB]/20'
-                              : 'border border-[#E5E9F0] text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
-                          }`}
-                          title={isFollowed ? 'Đang theo dõi' : 'Theo dõi'}
-                        >
-                          {isFollowed ? (
-                            <UserCheck className="h-4 w-4" />
-                          ) : (
-                            <UserPlus className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })
+                  friendSuggestions.map(renderSuggestion)
                 )}
-              </div>
-
-              {/* Nút Khám phá đồ thị: Tint style với subtitle 12px secondary text */}
-              <div className="pt-1">
-                <button
-                  onClick={() => setIsGraphModalOpen(true)}
-                  className="w-full rounded-[12px] bg-[#EFF4FF] hover:bg-blue-100 text-[#2563EB] border border-[#2563EB]/20 p-3 text-left flex items-center gap-3 transition-colors duration-150 btn-press"
-                >
-                  <div className="h-9 w-9 rounded-lg bg-white/80 text-[#2563EB] flex items-center justify-center shrink-0 border border-[#2563EB]/20 shadow-2xs">
-                    <Network className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-[#2563EB] leading-tight">
-                      Khám phá đồ thị
-                    </div>
-                    <div className="text-[12px] text-[#64748B] font-normal truncate mt-0.5">
-                      Xem mạng lưới bạn bè của bạn
-                    </div>
-                  </div>
-                </button>
               </div>
             </div>
           </aside>
@@ -707,6 +694,7 @@ export default function MainLayout() {
             </div>
           </aside>
         </div>
+        )}
       </div>
 
       {/* ======================================================== */}
@@ -727,14 +715,6 @@ export default function MainLayout() {
         </button>
 
         <button
-          onClick={() => setIsGraphModalOpen(true)}
-          className="flex flex-col items-center gap-1 text-[11px] text-[#64748B] hover:text-[#2563EB]"
-        >
-          <Network className="h-4 w-4" />
-          <span>Đồ thị</span>
-        </button>
-
-        <button
           onClick={() => setIsCreatePostOpen(true)}
           className="flex flex-col items-center gap-1 text-[11px] text-[#2563EB] font-medium"
         >
@@ -743,18 +723,10 @@ export default function MainLayout() {
           </div>
           <span>Đăng bài</span>
         </button>
-
-        <button
-          onClick={() => navigate('/admin')}
-          className="flex flex-col items-center gap-1 text-[11px] text-[#64748B] hover:text-[#2563EB]"
-        >
-          <ShieldCheck className="h-4 w-4" />
-          <span>Quản trị</span>
-        </button>
       </nav>
 
       {/* ======================================================== */}
-      {/* 4. MODAL DIALOGS: CREATE POST & GRAPH CANVAS              */}
+      {/* 4. MODAL DIALOG: CREATE POST                            */}
       {/* ======================================================== */}
       {/* 4A. CREATE POST MODAL */}
       <Dialog open={isCreatePostOpen} onOpenChange={setIsCreatePostOpen}>
@@ -827,49 +799,6 @@ export default function MainLayout() {
               </button>
             </div>
           </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* 4B. GRAPH CANVAS MODAL */}
-      <Dialog open={isGraphModalOpen} onOpenChange={setIsGraphModalOpen}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] bg-white text-[#0F172A] border border-[#E5E9F0] p-6 flex flex-col rounded-[16px] shadow-2xl animate-in fade-in zoom-in-95 duration-120">
-          <DialogHeader className="pb-3 border-b border-[#E5E9F0]">
-            <DialogTitle className="flex items-center gap-2.5 text-base font-semibold text-[#0F172A]">
-              <div className="p-1.5 rounded-[8px] bg-[#EFF4FF] text-[#2563EB]">
-                <Network className="h-5 w-5" />
-              </div>
-              <span>Trực quan hóa đồ thị mạng lưới</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[#64748B]">
-              Không gian tương tác trực quan mạng lưới liên kết giữa User, Post và Topic trên CSDL FalkorDB.
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* VÙNG KHUNG CANVAS TRỐNG ĐỂ SAU NÀY NHÚNG CYTOSCAPE */}
-          <div className="flex-1 min-h-[420px] rounded-[12px] bg-slate-950 border border-slate-800 relative flex flex-col items-center justify-center p-8 text-center overflow-hidden mt-3">
-            <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
-
-            <div className="relative z-10 flex flex-col items-center max-w-md space-y-3">
-              <div className="h-12 w-12 rounded-[12px] bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center shadow-md animate-pulse">
-                <Network className="h-6 w-6" />
-              </div>
-              <h4 className="text-sm font-semibold text-white">Khung nhúng đồ thị mạng lưới</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Không gian hiển thị canvas đồ thị trực quan (các node Người dùng, Bài viết, Chủ đề và duyệt liên kết quan hệ).
-              </p>
-              <div className="flex items-center gap-2 pt-1 flex-wrap justify-center">
-                <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40 text-[11px] rounded-lg px-2.5 py-0.5">
-                  Người dùng (#6366F1)
-                </Badge>
-                <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/40 text-[11px] rounded-lg px-2.5 py-0.5">
-                  Bài viết (#22D3EE)
-                </Badge>
-                <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[11px] rounded-lg px-2.5 py-0.5">
-                  Chủ đề (#F59E0B)
-                </Badge>
-              </div>
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
     </div>

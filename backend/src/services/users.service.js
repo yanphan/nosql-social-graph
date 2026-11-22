@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import * as usersRepo from '../repositories/users.repo.js';
+import * as socialRepo from '../repositories/social.repo.js';
 import { NotFound, Conflict, Forbidden } from '../utils/errors.js';
 import { pageOf } from '../utils/http.js';
 
@@ -31,6 +32,25 @@ export async function listUsers({ q = '', page = 1, limit = 20 }, viewer = null)
   const rows = await usersRepo.list({ q, skip, limit: limit + 1 });
   const items = rows.map((u) => sanitizeUser(u, viewer));
   return pageOf(items, { page, limit });
+}
+
+// Danh sách cho trang quản trị: có tổng số theo bộ lọc (để phân trang) và số liệu thật
+export async function adminListUsers({ q = '', role = '', status = '', page = 1, limit = 20 }, viewer) {
+  const skip = (page - 1) * limit;
+  const { items, total } = await usersRepo.adminList({ q: q.trim(), role, status, skip, limit });
+  return {
+    items: items.map((r) => ({ ...sanitizeUser(r.user, viewer), followers: r.followers, posts: r.posts })),
+    page,
+    limit,
+    total,
+    hasMore: skip + items.length < total,
+  };
+}
+
+// Admin không tự khóa / tự hạ quyền / tự xóa mình: tránh tự khóa ngoài hệ thống.
+// Vì người thao tác luôn là một admin đang hoạt động, quy tắc này cũng bảo đảm luôn còn ít nhất một admin.
+function forbidSelf(id, actor, message) {
+  if (actor && actor.id === id) throw new Forbidden(message);
 }
 
 export async function getUserProfile(userId, viewer = null) {
@@ -96,7 +116,8 @@ export async function updateUser(id, updateData, viewer) {
   return sanitizeUser(updated, viewer);
 }
 
-export async function setUserStatus(id, status) {
+export async function setUserStatus(id, status, actor) {
+  if (status === 'locked') forbidSelf(id, actor, 'Không thể tự khóa tài khoản của chính mình');
   const target = await usersRepo.findById(id);
   if (!target) {
     throw new NotFound('Người dùng không tồn tại');
@@ -106,7 +127,8 @@ export async function setUserStatus(id, status) {
   return sanitizeUser(updated, { role: 'admin' });
 }
 
-export async function setUserRole(id, role) {
+export async function setUserRole(id, role, actor) {
+  if (role !== 'admin') forbidSelf(id, actor, 'Không thể tự gỡ quyền quản trị của chính mình');
   const target = await usersRepo.findById(id);
   if (!target) {
     throw new NotFound('Người dùng không tồn tại');
@@ -116,14 +138,27 @@ export async function setUserRole(id, role) {
   return sanitizeUser(updated, { role: 'admin' });
 }
 
-export async function deleteUser(id) {
+export async function resetPassword(id, password) {
+  const target = await usersRepo.findById(id);
+  if (!target) {
+    throw new NotFound('Người dùng không tồn tại');
+  }
+  await usersRepo.setPassword(id, await bcrypt.hash(password, 10));
+  return { updated: true };
+}
+
+export async function deleteUser(id, actor) {
+  forbidSelf(id, actor, 'Không thể tự xóa tài khoản của chính mình');
   const target = await usersRepo.findById(id);
   if (!target) {
     throw new NotFound('Người dùng không tồn tại');
   }
 
-  await usersRepo.remove(id);
-  return { deleted: true };
+  // Xóa luôn bài viết của người này; lượt thích/bình luận/chia sẻ của họ trên bài người khác
+  // mất theo, nên tính lại bộ đếm của các bài đó.
+  const touched = await usersRepo.remove(id);
+  await socialRepo.recountMany(touched ?? []);
+  return { deleted: true, recountedPosts: touched?.length ?? 0 };
 }
 
 export async function getUserFollowers(userId, { page = 1, limit = 20 }, viewer = null) {

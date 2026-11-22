@@ -15,8 +15,6 @@
     "axios-mock-adapter": "^1.22.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
-    "cytoscape": "^3.30.0",
-    "cytoscape-fcose": "^2.2.0",
     "framer-motion": "^11.3.19",
     "lucide-react": "^0.414.0",
     "radix-ui": "^1.8.1",

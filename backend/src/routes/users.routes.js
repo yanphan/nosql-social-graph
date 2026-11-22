@@ -14,7 +14,7 @@ const createUserSchema = z.object({
   password: z.string().min(6, 'Mật khẩu phải từ 6 ký tự trở lên'),
   fullName: z.string().min(1, 'Họ và tên không được để trống'),
   email: z.string().email('Email không đúng định dạng').optional().or(z.literal('')),
-  role: z.enum(['admin', 'analyst', 'user']).default('user'),
+  role: z.enum(['admin', 'user']).default('user'),
 });
 
 const updateUserSchema = z.object({
@@ -29,7 +29,17 @@ const setStatusSchema = z.object({
 });
 
 const setRoleSchema = z.object({
-  role: z.enum(['admin', 'analyst', 'user']),
+  role: z.enum(['admin', 'user']),
+});
+
+const resetPasswordSchema = z.object({
+  password: z
+    .string()
+    .min(8, 'Mật khẩu tối thiểu 8 ký tự')
+    .max(72)
+    .regex(/[a-z]/, 'Mật khẩu cần có chữ thường')
+    .regex(/[A-Z]/, 'Mật khẩu cần có chữ hoa')
+    .regex(/[0-9]/, 'Mật khẩu cần có chữ số'),
 });
 
 // GET /api/users?q=&page=&limit=
@@ -84,7 +94,7 @@ router.patch(
   requireRole('admin'),
   validate(setStatusSchema, 'body'),
   asyncH(async (req, res) => {
-    const data = await usersService.setUserStatus(req.params.id, req.body.status);
+    const data = await usersService.setUserStatus(req.params.id, req.body.status, req.user);
     return ok(res, data);
   })
 );
@@ -96,7 +106,19 @@ router.patch(
   requireRole('admin'),
   validate(setRoleSchema, 'body'),
   asyncH(async (req, res) => {
-    const data = await usersService.setUserRole(req.params.id, req.body.role);
+    const data = await usersService.setUserRole(req.params.id, req.body.role, req.user);
+    return ok(res, data);
+  })
+);
+
+// PATCH /api/users/:id/password (Admin đặt lại mật khẩu)
+router.patch(
+  '/:id/password',
+  requireAuth,
+  requireRole('admin'),
+  validate(resetPasswordSchema, 'body'),
+  asyncH(async (req, res) => {
+    const data = await usersService.resetPassword(req.params.id, req.body.password);
     return ok(res, data);
   })
 );
@@ -107,7 +129,7 @@ router.delete(
   requireAuth,
   requireRole('admin'),
   asyncH(async (req, res) => {
-    const data = await usersService.deleteUser(req.params.id);
+    const data = await usersService.deleteUser(req.params.id, req.user);
     return ok(res, data);
   })
 );
