@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { 
   mockUsers, 
   mockTopics
@@ -10,6 +10,7 @@ import { postsService } from '@/services/posts';
 import { recommendService } from '@/services/recommend';
 import PostCard from '@/components/post/PostCard';
 import SuggestionsPage from '@/pages/SuggestionsPage';
+import ProfilePage from '@/pages/ProfilePage';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,13 +41,15 @@ import {
   Send,
   Sparkles,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  User as UserIcon
 } from 'lucide-react';
 import { getTopicColor } from '@/lib/topicColor';
 import '@/styles/tokens.css';
 
 export default function MainLayout({ view = 'feed' }) {
   const navigate = useNavigate();
+  const { username: profileUsername } = useParams();
   const [currentUser] = useState(() => authService.getStoredUser());
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [followedUsers, setFollowedUsers] = useState({});
@@ -223,15 +226,20 @@ export default function MainLayout({ view = 'feed' }) {
     return (
       <div key={user.id} className="flex items-center justify-between gap-3 group">
         <div className="flex items-center gap-2.5 min-w-0">
-          <img
-            src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=b6e3f4`}
-            alt={user.fullName || user.username}
-            className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0] shrink-0"
-          />
+          <Link to={`/u/${encodeURIComponent(user.username)}`} tabIndex={-1} aria-hidden="true" className="shrink-0">
+            <img
+              src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=b6e3f4`}
+              alt=""
+              className="w-9 h-9 rounded-full object-cover bg-slate-100 ring-2 ring-white border border-[#E5E9F0]"
+            />
+          </Link>
           <div className="min-w-0">
-            <div className="font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] cursor-pointer">
+            <Link
+              to={`/u/${encodeURIComponent(user.username)}`}
+              className="block font-semibold text-xs text-[#0F172A] truncate hover:text-[#2563EB] hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+            >
               {user.fullName || user.username}
-            </div>
+            </Link>
             {/* Secondary text: 13px #64748B chuẩn AA */}
             <div className="text-[12px] text-[#64748B] truncate tabular-nums" title={user.reason}>
               {user.reason || (user.mutual ? `${user.mutual} kết nối chung` : `${user.followers || 0} người theo dõi`)}
@@ -375,6 +383,14 @@ export default function MainLayout({ view = 'feed' }) {
                   </div>
                 </div>
 
+                <DropdownMenuItem
+                  onClick={() => navigate(`/u/${encodeURIComponent(currentUser.username)}`)}
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-xs font-medium text-[#0F172A] hover:bg-[#F1F5F9]"
+                >
+                  <UserIcon className="h-4 w-4" />
+                  <span>Trang cá nhân</span>
+                </DropdownMenuItem>
+
                 {/* Admin cũng là một thành viên: dùng giao diện này để đăng bài, có lối tắt về trang quản trị */}
                 {currentUser.role === 'admin' && (
                   <DropdownMenuItem
@@ -406,7 +422,13 @@ export default function MainLayout({ view = 'feed' }) {
       {/* 2. MAIN LAYOUT: 3 CỘT (Sticky sidebars at top 88px)       */}
       {/* ======================================================== */}
       <div className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6 pb-20 sm:pb-8">
-        {view === 'suggestions' ? (
+        {view === 'profile' ? (
+          <ProfilePage
+            username={profileUsername}
+            currentUser={currentUser}
+            onFollowChange={(id, following) => setFollowedUsers((prev) => ({ ...prev, [id]: following }))}
+          />
+        ) : view === 'suggestions' ? (
           <SuggestionsPage followedUsers={followedUsers} onToggleFollow={toggleFollow} />
         ) : (
         <div className="flex justify-center gap-6 w-full">
@@ -572,7 +594,12 @@ export default function MainLayout({ view = 'feed' }) {
                 {/* Name and @username below the avatar */}
                 <div className="min-w-0">
                   <h4 className="font-semibold text-[14px] text-[#0F172A] truncate">
-                    {currentUser.fullName}
+                    <Link
+                      to={`/u/${encodeURIComponent(currentUser.username)}`}
+                      className="hover:text-[#2563EB] hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                    >
+                      {currentUser.fullName}
+                    </Link>
                   </h4>
                   <p className="text-[12px] text-[#64748B] tabular-nums truncate">
                     @{currentUser.username}

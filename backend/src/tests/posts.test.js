@@ -398,4 +398,45 @@ describe('Posts, Topics & Social API (Sprint 1)', () => {
     const forbidden = await request(app).get('/api/admin/posts').set('Authorization', `Bearer ${userToken}`);
     expect(forbidden.status).toBe(403);
   });
+
+  it('POST /api/posts/:id/share -> chia sẻ bài người khác, trả shareCount; via là chính mình thì bỏ', async () => {
+    postsRepo.findById.mockResolvedValue({ id: 'p_bob', author: { id: 'u_bob' } });
+    socialRepo.recount.mockResolvedValue({ likeCount: 0, commentCount: 0, shareCount: 3 });
+
+    const res = await request(app)
+      .post('/api/posts/p_bob/share')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ via: 'u_alice' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ shared: true, shareCount: 3 });
+    expect(socialRepo.share).toHaveBeenCalledWith('u_alice', 'p_bob', null);
+
+    const noBody = await request(app).post('/api/posts/p_bob/share').set('Authorization', `Bearer ${userToken}`);
+    expect(noBody.status).toBe(200);
+  });
+
+  it('POST /api/posts/:id/share -> không chia sẻ được bài của chính mình (400), bài không có -> 404', async () => {
+    postsRepo.findById.mockResolvedValue({ id: 'p_me', author: { id: 'u_alice' } });
+    const own = await request(app).post('/api/posts/p_me/share').set('Authorization', `Bearer ${userToken}`);
+    expect(own.status).toBe(400);
+    expect(socialRepo.share).not.toHaveBeenCalled();
+
+    postsRepo.findById.mockResolvedValue(null);
+    const missing = await request(app).post('/api/posts/p_x/share').set('Authorization', `Bearer ${userToken}`);
+    expect(missing.status).toBe(404);
+  });
+
+  it('DELETE /api/posts/:id/share -> hủy chia sẻ, cần đăng nhập', async () => {
+    postsRepo.findById.mockResolvedValue({ id: 'p_bob', author: { id: 'u_bob' } });
+    socialRepo.recount.mockResolvedValue({ likeCount: 0, commentCount: 0, shareCount: 2 });
+
+    const res = await request(app).delete('/api/posts/p_bob/share').set('Authorization', `Bearer ${userToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ shared: false, shareCount: 2 });
+    expect(socialRepo.unshare).toHaveBeenCalledWith('u_alice', 'p_bob');
+
+    const anon = await request(app).delete('/api/posts/p_bob/share');
+    expect(anon.status).toBe(401);
+  });
 });

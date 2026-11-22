@@ -114,9 +114,24 @@ export const postsService = {
     }
   },
 
-  // Chia sẻ bài viết
-  sharePost: async (postId, via = '') => {
-    const res = await api.post(`/posts/${postId}/share`, { via });
-    return res.data?.data;
+  // Chia sẻ / bỏ chia sẻ bài viết: trả { shared, shareCount }. via = id người mình thấy bài qua họ (nếu có)
+  sharePost: async (postId, via) => {
+    try {
+      const res = await api.post(`/posts/${postId}/share`, via ? { via } : {});
+      if (res.data?.ok) return res.data.data;
+      throw new Error(res.data?.error?.message);
+    } catch (err) {
+      throw new Error(err.response?.data?.error?.message || err.message || 'Không chia sẻ được bài viết');
+    }
+  },
+
+  unsharePost: async (postId) => {
+    try {
+      const res = await api.delete(`/posts/${postId}/share`);
+      if (res.data?.ok) return res.data.data;
+      throw new Error(res.data?.error?.message);
+    } catch (err) {
+      throw new Error(err.response?.data?.error?.message || err.message || 'Không bỏ chia sẻ được');
+    }
   },
 };

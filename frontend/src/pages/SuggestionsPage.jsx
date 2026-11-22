@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { RefreshCw, Search, Check, Plus } from 'lucide-react';
 import { recommendService } from '@/services/recommend';
 
@@ -39,20 +40,27 @@ function Stat({ label, value, highlight }) {
 function SuggestionCard({ user, maxScore, isFollowed, onToggle }) {
   const name = user.fullName || user.username;
   const isPopular = user.source === 'popular';
+  const profileUrl = `/u/${encodeURIComponent(user.username)}`;
   const pct = isPopular || !maxScore ? 0 : Math.max(6, Math.round((user.score / maxScore) * 100));
 
   return (
     <li className="bg-white rounded-[16px] border border-[#E5E9F0] p-5 flex flex-col gap-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-[#CBD5E1] transition-colors">
       <div className="flex items-start gap-3 min-w-0">
-        <img
-          src={user.avatar}
-          alt=""
-          width={48}
-          height={48}
-          className="w-12 h-12 rounded-full bg-[#EFF4FF] border border-[#E5E9F0] shrink-0"
-        />
+        <Link to={profileUrl} tabIndex={-1} aria-hidden="true" className="shrink-0">
+          <img
+            src={user.avatar}
+            alt=""
+            width={48}
+            height={48}
+            className="w-12 h-12 rounded-full bg-[#EFF4FF] border border-[#E5E9F0]"
+          />
+        </Link>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-[#0F172A] truncate" title={name}>{name}</h2>
+          <h2 className="text-sm font-semibold text-[#0F172A] truncate" title={name}>
+            <Link to={profileUrl} className={`rounded hover:text-[#2563EB] hover:underline ${focusRing}`}>
+              {name}
+            </Link>
+          </h2>
           <p className="text-xs text-[#64748B] truncate">@{user.username}</p>
           {isPopular && <p className="mt-1.5 text-xs text-[#475569] line-clamp-2">{user.reason}</p>}
         </div>

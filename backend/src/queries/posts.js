@@ -7,15 +7,17 @@ export const posts = {
     MATCH (t:Topic {id:tid}) MERGE (p)-[:ABOUT {weight:1.0}]->(t)
     RETURN DISTINCT p.id AS id`,
 
-  // Feed/list. $authorId, $since có thể là null. likedByMe dựa trên $me.
+  // Feed/list. $authorId, $since có thể là null. likedByMe / sharedByMe dựa trên $me.
   list: `MATCH (a:User)-[:POSTED]->(p:Post)
     WHERE ($authorId IS NULL OR a.id = $authorId) AND p.createdAt >= $since
     WITH a, p ORDER BY p.createdAt DESC SKIP $skip LIMIT $limit
     OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
     WITH a, p, collect(t.name) AS topics
     OPTIONAL MATCH (:User {id:$me})-[l:LIKED]->(p)
+    WITH a, p, topics, l
+    OPTIONAL MATCH (:User {id:$me})-[s:SHARED]->(p)
     RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
-           topics, l IS NOT NULL AS likedByMe
+           topics, l IS NOT NULL AS likedByMe, s IS NOT NULL AS sharedByMe
     ORDER BY p.createdAt DESC`,
 
   listByTopic: `MATCH (a:User)-[:POSTED]->(p:Post)-[:ABOUT]->(:Topic {name:$topic})
@@ -24,9 +26,24 @@ export const posts = {
     OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
     WITH a, p, collect(t.name) AS topics
     OPTIONAL MATCH (:User {id:$me})-[l:LIKED]->(p)
+    WITH a, p, topics, l
+    OPTIONAL MATCH (:User {id:$me})-[s:SHARED]->(p)
     RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
-           topics, l IS NOT NULL AS likedByMe
+           topics, l IS NOT NULL AS likedByMe, s IS NOT NULL AS sharedByMe
     ORDER BY p.createdAt DESC`,
+
+  // Bài một người đã chia sẻ (tab "Đã chia sẻ" ở trang cá nhân), mới chia sẻ trước.
+  // $uid = người chia sẻ, $me = người xem (để biết người xem đã thích / chia sẻ bài chưa)
+  sharedBy: `MATCH (:User {id:$uid})-[s:SHARED]->(p:Post)<-[:POSTED]-(a:User)
+    WITH s, p, a ORDER BY s.at DESC SKIP $skip LIMIT $limit
+    OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
+    WITH s, p, a, collect(t.name) AS topics
+    OPTIONAL MATCH (:User {id:$me})-[l:LIKED]->(p)
+    WITH s, p, a, topics, l
+    OPTIONAL MATCH (:User {id:$me})-[ms:SHARED]->(p)
+    RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName,
+           topics, l IS NOT NULL AS likedByMe, ms IS NOT NULL AS sharedByMe, s.at AS sharedAt
+    ORDER BY sharedAt DESC`,
 
   findById: `MATCH (a:User)-[:POSTED]->(p:Post {id:$id})
     OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
@@ -92,6 +109,12 @@ export const interactions = {
   comment:  `MATCH (u:User {id:$uid}), (p:Post {id:$pid}) CREATE (u)-[:COMMENTED {at:$now, text:$text}]->(p)`,
   share:    `MATCH (u:User {id:$uid}), (p:Post {id:$pid})
     MERGE (u)-[s:SHARED]->(p) ON CREATE SET s.at=$now, s.via=$via`,
+  unshare:  `MATCH (:User {id:$uid})-[s:SHARED]->(:Post {id:$pid}) DELETE s`,
+  // Trạng thái của người xem với một bài: đã thích / đã chia sẻ chưa
+  myState:  `OPTIONAL MATCH (:User {id:$uid})-[l:LIKED]->(:Post {id:$pid})
+    WITH count(l) AS liked
+    OPTIONAL MATCH (:User {id:$uid})-[s:SHARED]->(:Post {id:$pid})
+    RETURN liked, count(s) AS shared`,
   // Bình luận không có id riêng: định danh bằng (người bình luận, bài viết, thời điểm at)
   findComment: `MATCH (u:User {id:$uid})-[c:COMMENTED]->(:Post {id:$pid}) WHERE c.at = $at
     RETURN u.username AS username, c.text AS text, c.at AS at LIMIT 1`,

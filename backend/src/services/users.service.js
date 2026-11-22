@@ -69,8 +69,18 @@ export async function getUserProfile(userId, viewer = null) {
     followers: stats.followers,
     following: stats.following,
     posts: stats.posts,
+    shares: stats.shares ?? 0,
     isFollowing,
   };
+}
+
+// Trang cá nhân /u/:username
+export async function getUserProfileByUsername(username, viewer = null) {
+  const user = await usersRepo.findByUsername(String(username ?? '').trim());
+  if (!user) {
+    throw new NotFound('Người dùng không tồn tại');
+  }
+  return getUserProfile(user.id, viewer);
 }
 
 export async function createUser({ username, password, fullName, email = '', role = 'user' }) {

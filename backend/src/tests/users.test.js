@@ -3,10 +3,12 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import * as usersRepo from '../repositories/users.repo.js';
 import * as socialRepo from '../repositories/social.repo.js';
+import * as postsRepo from '../repositories/posts.repo.js';
 import { signToken } from '../middlewares/auth.js';
 
 vi.mock('../repositories/users.repo.js');
 vi.mock('../repositories/social.repo.js');
+vi.mock('../repositories/posts.repo.js');
 
 describe('Users API (Sprint 1)', () => {
   let app;
@@ -239,5 +241,45 @@ describe('Users API (Sprint 1)', () => {
     expect(nan.body.data.page).toBe(1);
     const forbidden = await request(app).get('/api/admin/users').set('Authorization', `Bearer ${userToken}`);
     expect(forbidden.status).toBe(403);
+  });
+
+  it('GET /api/users/by-username/:username -> hồ sơ theo username, có số bài đã chia sẻ; không có -> 404', async () => {
+    usersRepo.findByUsername.mockResolvedValue({ id: 'u_bob', username: 'bob' });
+    usersRepo.profileStats.mockResolvedValue({
+      user: { id: 'u_bob', username: 'bob', fullName: 'Bob', role: 'user', status: 'active', passwordHash: 'x' },
+      followers: 3,
+      following: 2,
+      posts: 4,
+      shares: 5,
+    });
+    usersRepo.isFollowing.mockResolvedValue(false);
+
+    const res = await request(app).get('/api/users/by-username/bob').set('Authorization', `Bearer ${userToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ followers: 3, following: 2, posts: 4, shares: 5, isFollowing: false });
+    expect(res.body.data.user.passwordHash).toBeUndefined();
+    expect(usersRepo.profileStats).toHaveBeenCalledWith('u_bob');
+
+    usersRepo.findByUsername.mockResolvedValue(null);
+    const missing = await request(app).get('/api/users/by-username/khongco').set('Authorization', `Bearer ${userToken}`);
+    expect(missing.status).toBe(404);
+  });
+
+  it('GET /api/users/:id/shares -> bài đã chia sẻ, phân trang, truyền người xem', async () => {
+    usersRepo.findById.mockResolvedValue({ id: 'u_bob' });
+    postsRepo.sharedBy.mockResolvedValue([
+      { post: { id: 'p1' }, sharedAt: 2 },
+      { post: { id: 'p2' }, sharedAt: 1 },
+    ]);
+
+    const res = await request(app).get('/api/users/u_bob/shares?page=1&limit=1').set('Authorization', `Bearer ${userToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.items).toEqual([{ post: { id: 'p1' }, sharedAt: 2 }]);
+    expect(res.body.data.hasMore).toBe(true);
+    expect(postsRepo.sharedBy).toHaveBeenCalledWith({ uid: 'u_bob', me: 'u_alice', skip: 0, limit: 2 });
+
+    usersRepo.findById.mockResolvedValue(null);
+    const missing = await request(app).get('/api/users/u_x/shares').set('Authorization', `Bearer ${userToken}`);
+    expect(missing.status).toBe(404);
   });
 });
