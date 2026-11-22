@@ -38,6 +38,20 @@ export const posts = {
   remove:       `MATCH (p:Post {id:$id}) DETACH DELETE p`,
   search: `MATCH (a:User)-[:POSTED]->(p:Post) WHERE toLower(p.content) CONTAINS toLower($q)
     RETURN p, a.username AS authorUsername ORDER BY p.createdAt DESC LIMIT $limit`,
+
+  // Trang quản trị: tìm theo nội dung / tác giả, lọc theo chủ đề. $q đã được hạ chữ thường, '' = bỏ qua.
+  adminList: `MATCH (a:User)-[:POSTED]->(p:Post)
+    WHERE ($q = '' OR toLower(p.content) CONTAINS $q OR toLower(a.username) CONTAINS $q OR toLower(a.fullName) CONTAINS $q)
+      AND ($topic = '' OR (p)-[:ABOUT]->(:Topic {name:$topic}))
+    WITH a, p ORDER BY p.createdAt DESC SKIP $skip LIMIT $limit
+    OPTIONAL MATCH (p)-[:ABOUT]->(t:Topic)
+    WITH a, p, collect(t.name) AS topics
+    RETURN p, a.id AS authorId, a.username AS authorUsername, a.fullName AS authorFullName, topics
+    ORDER BY p.createdAt DESC`,
+  adminCount: `MATCH (a:User)-[:POSTED]->(p:Post)
+    WHERE ($q = '' OR toLower(p.content) CONTAINS $q OR toLower(a.username) CONTAINS $q OR toLower(a.fullName) CONTAINS $q)
+      AND ($topic = '' OR (p)-[:ABOUT]->(:Topic {name:$topic}))
+    RETURN count(p) AS total`,
 };
 
 export const topics = {
@@ -47,6 +61,16 @@ export const topics = {
   create: `CREATE (t:Topic {id:$id, name:$name, description:$description}) RETURN t`,
   update: `MATCH (t:Topic {id:$id}) SET t.name=$name, t.description=$description RETURN t`,
   remove: `MATCH (t:Topic {id:$id}) DETACH DELETE t`,
+  findById: `MATCH (t:Topic {id:$id}) RETURN t`,
+  findByName: `MATCH (t:Topic {name:$name}) RETURN t`,
+  // Ảnh hưởng khi xóa chủ đề: số bài gắn, số bài chỉ có duy nhất chủ đề này, số người quan tâm
+  impact: `MATCH (t:Topic {id:$id})
+    OPTIONAL MATCH (t)<-[:ABOUT]-(p:Post)
+    OPTIONAL MATCH (p)-[:ABOUT]->(other:Topic) WHERE other <> t
+    WITH t, p, count(other) AS others
+    WITH t, count(p) AS posts, sum(CASE WHEN p IS NOT NULL AND others = 0 THEN 1 ELSE 0 END) AS orphanPosts
+    OPTIONAL MATCH (t)<-[i:INTERESTED_IN]-(:User)
+    RETURN posts, orphanPosts, count(i) AS interested`,
   setInterests: `MATCH (u:User {id:$uid}) UNWIND $items AS it
     MATCH (t:Topic {id:it.topicId}) MERGE (u)-[r:INTERESTED_IN]->(t) SET r.score = it.score`,
   userInterests: `MATCH (u:User {id:$uid})-[r:INTERESTED_IN]->(t:Topic) OPTIONAL MATCH (t)<-[:ABOUT]-(p:Post)
@@ -68,6 +92,11 @@ export const interactions = {
   comment:  `MATCH (u:User {id:$uid}), (p:Post {id:$pid}) CREATE (u)-[:COMMENTED {at:$now, text:$text}]->(p)`,
   share:    `MATCH (u:User {id:$uid}), (p:Post {id:$pid})
     MERGE (u)-[s:SHARED]->(p) ON CREATE SET s.at=$now, s.via=$via`,
+  // Bình luận không có id riêng: định danh bằng (người bình luận, bài viết, thời điểm at)
+  findComment: `MATCH (u:User {id:$uid})-[c:COMMENTED]->(:Post {id:$pid}) WHERE c.at = $at
+    RETURN u.username AS username, c.text AS text, c.at AS at LIMIT 1`,
+  removeComment: `MATCH (:User {id:$uid})-[c:COMMENTED]->(:Post {id:$pid}) WHERE c.at = $at
+    WITH c LIMIT 1 DELETE c`,
   comments: `MATCH (u:User)-[c:COMMENTED]->(:Post {id:$pid})
     RETURN u.id AS userId, u.username AS username, c.text AS text, c.at AS at ORDER BY c.at DESC SKIP $skip LIMIT $limit`,
   recount:  `MATCH (p:Post {id:$pid})
@@ -76,4 +105,11 @@ export const interactions = {
     OPTIONAL MATCH (p)<-[s:SHARED]-() WITH p, lc, cc, count(s) AS sc
     SET p.likeCount=lc, p.commentCount=cc, p.shareCount=sc
     RETURN lc AS likeCount, cc AS commentCount, sc AS shareCount`,
+  // Tính lại bộ đếm cho nhiều bài (sau khi xóa một người dùng đã tương tác với các bài này)
+  recountMany: `UNWIND $pids AS pid MATCH (p:Post {id:pid})
+    OPTIONAL MATCH (p)<-[l:LIKED]-() WITH p, count(l) AS lc
+    OPTIONAL MATCH (p)<-[c:COMMENTED]-() WITH p, lc, count(c) AS cc
+    OPTIONAL MATCH (p)<-[s:SHARED]-() WITH p, lc, cc, count(s) AS sc
+    SET p.likeCount=lc, p.commentCount=cc, p.shareCount=sc
+    RETURN count(p) AS n`,
 };

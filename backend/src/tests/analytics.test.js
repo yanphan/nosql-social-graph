@@ -18,7 +18,6 @@ vi.mock('../repositories/admin.repo.js');
 describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
   let app;
   const userToken = signToken({ id: 'u_alice', username: 'alice', role: 'user' });
-  const analystToken = signToken({ id: 'u_analyst', username: 'analyst', role: 'analyst' });
   const adminToken = signToken({ id: 'u_admin', username: 'admin', role: 'admin' });
 
   beforeEach(async () => {
@@ -122,7 +121,7 @@ describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
 
   // --- BT3: Friend Suggestions ---
   describe('BT3: Friend Suggestions (/api/recommend/friends)', () => {
-    it('GET /api/recommend/friends -> gợi ý bạn bè kèm lý do và score', async () => {
+    it('GET /api/recommend/friends -> gợi ý theo dõi kèm lý do và score', async () => {
       analyticsRepo.friendSuggestions.mockResolvedValue([
         { id: 'u_david', username: 'david', fullName: 'David Le', mutual: 3, sharedTopics: 2, score: 8 },
       ]);
@@ -134,7 +133,8 @@ describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
       expect(res.body.data[0].username).toBe('david');
-      expect(res.body.data[0].reason).toContain('3 bạn chung');
+      expect(res.body.data[0].reason).toContain('3 kết nối chung');
+      expect(res.body.data[0].source).toBe('graph');
     });
 
     it('GET /api/recommend/friends -> fallback cold-start sang popularUsers cho tài khoản mới', async () => {
@@ -151,6 +151,8 @@ describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
       expect(res.body.ok).toBe(true);
       expect(res.body.data[0].username).toBe('celeb');
       expect(res.body.data[0].reason).toContain('Người nổi bật');
+      expect(res.body.data[0].source).toBe('popular');
+      expect(res.body.data[0].followers).toBe(500);
     });
   });
 
@@ -179,14 +181,14 @@ describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
 
   // --- BT5: Influence, Communities & Spread Tree ---
   describe('BT5: Advanced Analytics & RBAC', () => {
-    it('GET /api/analytics/influence -> Analyst truy cập được bảng xếp hạng (200)', async () => {
+    it('GET /api/analytics/influence -> Admin truy cập được bảng xếp hạng (200)', async () => {
       analyticsRepo.topFollowers.mockResolvedValue([
         { id: 'u_bob', username: 'bob', fullName: 'Bob', followers: 150 },
       ]);
 
       const res = await request(app)
         .get('/api/analytics/influence?metric=followers&limit=5')
-        .set('Authorization', `Bearer ${analystToken}`);
+        .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
@@ -204,7 +206,7 @@ describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
       expect(res.body.error.code).toBe('FORBIDDEN');
     });
 
-    it('GET /api/analytics/communities -> Analyst xem được phân cụm cộng đồng (200)', async () => {
+    it('GET /api/analytics/communities -> Admin xem được phân cụm cộng đồng (200)', async () => {
       analyticsRepo.wcc.mockResolvedValue([
         { cid: '1', members: ['u_alice', 'u_bob'] },
       ]);
@@ -212,7 +214,7 @@ describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
 
       const res = await request(app)
         .get('/api/analytics/communities')
-        .set('Authorization', `Bearer ${analystToken}`);
+        .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
@@ -294,7 +296,7 @@ describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
       expect(res.body.data.topics).toHaveLength(1);
     });
 
-    it('GET /api/stats -> Analyst xem được thống kê hệ thống (200)', async () => {
+    it('GET /api/stats -> Admin xem được thống kê hệ thống (200)', async () => {
       adminRepo.stats.mockResolvedValue({
         nodes: { User: 1000, Post: 5000, Topic: 50 },
         edges: { FOLLOWS: 15000 },
@@ -304,7 +306,7 @@ describe('Analytics & 5 Graph Problems API (Sprint 2)', () => {
 
       const res = await request(app)
         .get('/api/stats')
-        .set('Authorization', `Bearer ${analystToken}`);
+        .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);

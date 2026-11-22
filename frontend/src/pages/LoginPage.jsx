@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Lock,
   User,
@@ -9,16 +9,30 @@ import {
   CheckCircle2,
   AlertCircle,
   Network,
-  ArrowLeft,
 } from 'lucide-react';
-import { authService } from '@/services/auth';
+import { authService, homePathFor } from '@/services/auth';
+
+// Lý do bị đưa về trang đăng nhập (do api.js gắn vào URL)
+const REASONS = {
+  expired: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+  locked: 'Tài khoản của bạn đã bị khóa. Liên hệ quản trị viên để được hỗ trợ.',
+};
+
+// Tài khoản có sẵn sau khi seed (database/seed/config.js)
+const DEMO_PASSWORD = 'Passw0rd!';
+const DEMO_ACCOUNTS = [
+  { username: 'admin', label: 'Quản trị viên' },
+  { username: 'alice', label: 'Người dùng' },
+];
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState(() => REASONS[searchParams.get('reason')] ?? '');
   const [successMsg, setSuccessMsg] = useState('');
+  const [signedIn] = useState(() => authService.getStoredUser());
 
   const [form, setForm] = useState({
     username: '',
@@ -45,34 +59,22 @@ export default function LoginPage() {
       const res = await authService.login({
         username: form.username,
         password: form.password,
+        remember: form.remember,
       });
-
-      if (res.success) {
-        setSuccessMsg(`Chào mừng trở lại, ${res.user.fullName}!`);
-        setTimeout(() => {
-          navigate('/');
-        }, 500);
-      }
+      setSuccessMsg(`Chào mừng trở lại, ${res.user.fullName || res.user.username}!`);
+      // Mỗi vai trò vào đúng giao diện của mình
+      setTimeout(() => navigate(homePathFor(res.user.role), { replace: true }), 500);
     } catch (err) {
       setErrorMsg(err.message || 'Đăng nhập không thành công');
-    } finally {
       setLoading(false);
     }
   };
 
+  // Đã đăng nhập thì không ở lại trang đăng nhập
+  if (signedIn) return <Navigate to={homePathFor(signedIn.role)} replace />;
+
   return (
     <div className="relative min-h-screen bg-[#EEF2F6] flex flex-col items-center justify-center text-slate-800 antialiased font-sans px-4 py-10">
-      {/* Nút quay lại trang chủ đặt cố định góc trên bên trái */}
-      <div className="absolute top-6 left-6 sm:left-10 z-10">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 transition-all hover:-translate-x-0.5"
-        >
-          <ArrowLeft className="h-4 w-4 text-slate-500" />
-          <span>Quay lại trang chủ</span>
-        </Link>
-      </div>
-
       {/* Login Card đặt ngay trung tâm quang học (nâng nhẹ lên để cân đối thị giác) */}
       <div className="w-full max-w-[440px] -translate-y-4 sm:-translate-y-8">
           {/* Brand */}
@@ -175,6 +177,32 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+          </div>
+
+          {/* Tài khoản demo: bấm để điền sẵn vào form */}
+          <div className="mt-4 bg-white/70 rounded-3xl p-4 border border-slate-100/90">
+            <div className="flex items-center justify-between px-1 mb-2">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Tài khoản demo</span>
+              <span className="text-[11px] text-slate-500">
+                Mật khẩu: <code className="font-mono font-semibold text-slate-700">{DEMO_PASSWORD}</code>
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {DEMO_ACCOUNTS.map((acc) => (
+                <button
+                  key={acc.username}
+                  type="button"
+                  onClick={() => {
+                    setForm((f) => ({ ...f, username: acc.username, password: DEMO_PASSWORD }));
+                    setErrorMsg('');
+                  }}
+                  className="text-left px-3 py-2.5 rounded-2xl bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition-colors"
+                >
+                  <div className="text-xs font-bold text-slate-800">{acc.username}</div>
+                  <div className="text-[11px] text-slate-500">{acc.label}</div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

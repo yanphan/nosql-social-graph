@@ -1,7 +1,7 @@
 import { api } from './api';
 
 export const recommendService = {
-  // Gợi ý bạn bè dựa trên thuật toán đồ thị bạn chung & chủ đề chung (BT3 - UC-11)
+  // Gợi ý theo dõi dựa trên kết nối chung & chủ đề chung (BT3 - UC-11)
   getFriendRecommendations: async (limit = 5) => {
     try {
       const res = await api.get('/recommend/friends', { params: { limit } });
