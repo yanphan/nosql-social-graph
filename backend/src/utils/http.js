@@ -2,9 +2,15 @@ export const ok = (res, data, status = 200) => res.status(status).json({ ok: tru
 
 export const asyncH = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// page/limit không phải số (vd. ?page=abc) thì dùng mặc định, tránh SKIP NaN làm lỗi truy vấn
+const toInt = (v, d) => {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) ? n : d;
+};
+
 export const paginate = (q) => {
-  const page = Math.max(1, Number(q.page ?? 1));
-  const limit = Math.min(100, Math.max(1, Number(q.limit ?? 20)));
+  const page = Math.max(1, toInt(q.page, 1));
+  const limit = Math.min(100, Math.max(1, toInt(q.limit, 20)));
   return { page, limit, skip: (page - 1) * limit };
 };
 

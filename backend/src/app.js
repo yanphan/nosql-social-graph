@@ -37,10 +37,13 @@ export async function createApp() {
 
   // Tự động nạp mọi routes/*.routes.js
   const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'routes');
+  // Audit gắn một lần cho cả /api. Trước đây gắn theo từng router: các router prefix '/' (analytics, topics)
+  // khớp mọi /api/* nên một request bị ghi 2-3 lần.
+  app.use('/api', audit);
   if (fs.existsSync(dir)) {
     for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.routes.js'))) {
       const m = await import(pathToFileURL(path.join(dir, f)).href);
-      app.use('/api' + (m.prefix ?? '/'), audit, m.default);
+      app.use('/api' + (m.prefix ?? '/'), m.default);
     }
   }
 

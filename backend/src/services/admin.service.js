@@ -5,122 +5,189 @@ import * as importer from '../../../database/lib/importer.js';
 import * as exporter from '../../../database/lib/exporter.js';
 import * as backup from '../../../database/lib/backup.js';
 import * as integrity from '../../../database/lib/integrity.js';
-import { loadScale } from '../../../database/seed/load.js';
 import { read } from '../db/graph.js';
 import { admin as adminQueries } from '../queries/index.js';
-import { Invalid, NotFound } from '../utils/errors.js';
+import { AppError, Invalid, NotFound, Conflict } from '../utils/errors.js';
+import { appCache } from '../utils/cache.js';
+import * as adminRepo from '../repositories/admin.repo.js';
+import * as moderationRepo from '../repositories/moderation.repo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AUDIT_FILE = path.resolve(__dirname, '../../data/audit.ndjson');
+
+// Nhập / xuất / sao lưu / phục hồi dùng chung một kết nối CSDL và đều nặng: chỉ cho chạy một việc một lúc
+let running = null;
+async function exclusive(label, fn) {
+  if (running) throw new Conflict(`Đang ${running}, hãy thử lại sau khi xong`);
+  running = label;
+  try {
+    return await fn();
+  } finally {
+    running = null;
+  }
+}
+
+// Lỗi từ thư viện database/lib -> lỗi HTTP có mã rõ ràng
+function mapLibError(err) {
+  if (err instanceof AppError) return err;
+  switch (err?.code) {
+    case 'INVALID_KIND':
+    case 'INVALID_FORMAT':
+    case 'INVALID_NAME':
+      return new Invalid(err.message);
+    case 'NOT_FOUND':
+      return new NotFound(err.message);
+    case 'RESTORE_FAILED':
+    case 'BACKUP_FAILED':
+      return Object.assign(new AppError(500, err.code, err.message), { expose: true });
+    default:
+      return err;
+  }
+}
+
+const removeQuietly = (file) => {
+  try {
+    if (file && fs.existsSync(file)) fs.unlinkSync(file);
+  } catch {}
+};
 
 export async function importData({ kind, file }) {
   if (!file) {
     throw new Invalid('Vui lòng tải lên một file CSV hoặc JSON');
   }
-
-  const ext = path.extname(file.originalname || file.path).toLowerCase();
-  const filePath = file.path;
-
-  // Đếm trước khi import
-  const [beforeNodesRow] = await read(adminQueries.countAllNodes);
-  const before = Number(beforeNodesRow?.c ?? 0);
-
-  let inserted = 0;
+  const ext = path.extname(file.originalname || '').toLowerCase();
   try {
-    if (ext === '.json') {
-      const res = await importer.importJson(filePath);
-      inserted = res.nodes + res.edges;
-    } else if (ext === '.csv') {
-      if (!kind) {
-        throw new Invalid('Vui lòng chỉ định loại dữ liệu import (kind) khi tải file CSV');
-      }
-      const res = await importer.importCsv(kind, filePath);
-      inserted = res.inserted;
-    } else {
-      throw new Invalid('Chỉ hỗ trợ file định dạng .csv hoặc .json');
-    }
+    if (!['.json', '.csv'].includes(ext)) throw new Invalid('Chỉ hỗ trợ file .csv hoặc .json');
+    if (ext === '.csv' && !kind) throw new Invalid('Hãy chọn loại dữ liệu của file CSV');
+
+    return await exclusive('nhập dữ liệu', async () => {
+      const before = await countGraph();
+      const res = ext === '.json' ? await importer.importJson(file.path) : await importer.importCsv(kind, file.path);
+      const after = await countGraph();
+      appCache.clear();
+      return {
+        format: ext.slice(1),
+        kind: res.kind ?? 'all',
+        rows: res.rows,
+        skipped: res.skipped,
+        errors: res.errors,
+        detail: { nodes: res.nodes, edges: res.edges },
+        before,
+        after,
+        ms: res.ms,
+      };
+    });
+  } catch (err) {
+    throw mapLibError(err);
   } finally {
-    // Dọn dẹp file tạm của multer
-    if (fs.existsSync(filePath)) {
-      try { fs.unlinkSync(filePath); } catch {}
-    }
+    removeQuietly(file.path); // file tạm của multer
   }
-
-  // Đếm sau khi import
-  const [afterNodesRow] = await read(adminQueries.countAllNodes);
-  const after = Number(afterNodesRow?.c ?? 0);
-
-  return {
-    inserted,
-    before,
-    after,
-  };
 }
 
-export async function exportData({ format = 'csv', label = 'User' } = {}) {
+async function countGraph() {
+  const [[n], [e]] = await Promise.all([read(adminQueries.countAllNodes), read(adminQueries.countAllEdges)]);
+  return { nodes: Number(n?.c ?? 0), edges: Number(e?.c ?? 0) };
+}
+
+/** Xuất ra file tạm; route gửi file rồi xóa. Không kèm passwordHash. */
+export async function exportData({ format = 'json', label = 'User' } = {}) {
   const exportDir = path.resolve(__dirname, '../../../database/data/exports');
   fs.mkdirSync(exportDir, { recursive: true });
-
-  const timestamp = Date.now();
-  if (format === 'json') {
-    const filename = `export-graph-${timestamp}.json`;
-    const outPath = path.join(exportDir, filename);
-    await exporter.exportJson(outPath);
-    return {
-      filePath: outPath,
-      fileName: filename,
-      mimeType: 'application/json',
-    };
-  } else {
-    const cleanLabel = (label || 'User').trim();
-    const filename = `export-${cleanLabel.toLowerCase()}-${timestamp}.csv`;
-    const outPath = path.join(exportDir, filename);
-    await exporter.exportCsv(cleanLabel, outPath);
-    return {
-      filePath: outPath,
-      fileName: filename,
-      mimeType: 'text/csv',
-    };
+  const stamp = Date.now();
+  try {
+    return await exclusive('xuất dữ liệu', async () => {
+      if (format === 'json') {
+        const fileName = `graph-${stamp}.json`;
+        const filePath = path.join(exportDir, fileName);
+        await exporter.exportJson(filePath);
+        return { filePath, fileName };
+      }
+      const res = await exporter.exportCsv(label, path.join(exportDir, `tmp-${stamp}.csv`));
+      const fileName = `${res.kind.toLowerCase()}-${stamp}.csv`;
+      const filePath = path.join(exportDir, fileName);
+      fs.renameSync(res.outPath, filePath);
+      return { filePath, fileName };
+    });
+  } catch (err) {
+    throw mapLibError(err);
   }
 }
 
-export async function seedGraph() {
-  const report = await loadScale('DEFAULT', false);
-
-  const [nodesRow, edgesRow] = await Promise.all([
-    read(adminQueries.countAllNodes),
-    read(adminQueries.countAllEdges),
-  ]);
-
-  return {
-    nodes: Number(nodesRow[0]?.c ?? 0),
-    edges: Number(edgesRow[0]?.c ?? 0),
-    ms: report.totalTimeMs,
-    allIntegrityPassed: report.allIntegrityPassed,
-  };
-}
+const publicBackup = ({ fullPath, ...b }) => b; // không lộ đường dẫn trên máy chủ
 
 export async function backupGraph() {
-  return backup.createBackup();
+  try {
+    return publicBackup(await exclusive('sao lưu', () => backup.createBackup()));
+  } catch (err) {
+    throw mapLibError(err);
+  }
 }
 
 export async function listBackups() {
-  return backup.listBackups();
+  return (await backup.listBackups()).map(publicBackup);
+}
+
+export async function deleteBackup(file) {
+  try {
+    return await exclusive('xóa bản sao lưu', () => backup.deleteBackup(file));
+  } catch (err) {
+    throw mapLibError(err);
+  }
 }
 
 export async function restoreGraph({ file }) {
   if (!file || !file.trim()) {
     throw new Invalid('Vui lòng chỉ định file cần phục hồi');
   }
-
   try {
-    return await backup.restore(file.trim());
+    return await exclusive('phục hồi dữ liệu', async () => {
+      const res = await backup.restore(file.trim());
+      appCache.clear(); // gợi ý / thống kê đang lưu tạm theo dữ liệu cũ
+      return res;
+    });
   } catch (err) {
-    if (err.message.includes('không tồn tại')) {
-      throw new NotFound(err.message);
-    }
-    throw err;
+    appCache.clear();
+    throw mapLibError(err);
   }
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Trang tổng quan: số liệu chính, việc cần chú ý (tài khoản bị khóa, nội dung bị gỡ,
+ * chủ đề trống), hoạt động theo ngày, bản sao lưu gần nhất, phân bố số người theo dõi.
+ */
+export async function getOverview({ days = 30 } = {}) {
+  const now = Date.now();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  // Chỉ các ngày đã trọn vẹn (đến hết hôm qua): hôm nay chưa hết ngày, số liệu thấp giả tạo
+  const from = start.getTime() - days * DAY_MS;
+
+  const [graph, degree, modLog, backups] = await Promise.all([
+    adminRepo.overview({ now, from, days }),
+    adminRepo.degreeBuckets(),
+    moderationRepo.list({ limit: 1000 }),
+    backup.listBackups(),
+  ]);
+
+  const week = now - 7 * DAY_MS;
+  const recent = modLog.filter((m) => Number(m.at) >= week);
+  const last = backups[0];
+
+  return {
+    generatedAt: now,
+    ...graph,
+    moderation: {
+      postsRemovedWeek: recent.filter((m) => m.action === 'remove_post').length,
+      commentsRemovedWeek: recent.filter((m) => m.action === 'remove_comment').length,
+    },
+    backups: {
+      count: backups.length,
+      last: last ? publicBackup(last) : null,
+    },
+    degreeBuckets: degree,
+  };
 }
 
 export async function getIntegrity() {

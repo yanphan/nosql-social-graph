@@ -66,6 +66,17 @@ router.put(
   })
 );
 
+// GET /api/topics/:id/impact (Admin): số bài viết, người quan tâm bị ảnh hưởng nếu xóa
+router.get(
+  '/topics/:id/impact',
+  requireAuth,
+  requireRole('admin'),
+  asyncH(async (req, res) => {
+    const data = await topicsService.getTopicImpact(req.params.id);
+    return ok(res, data);
+  })
+);
+
 // DELETE /api/topics/:id (Admin)
 router.delete(
   '/topics/:id',

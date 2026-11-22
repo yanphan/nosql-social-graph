@@ -23,6 +23,7 @@ lerna-debug.log*
 *.log
 backend/data/audit.ndjson
 data/audit.ndjson
+backend/data/moderation.ndjson
 
 # Database data & dumps
 database/data/*.csv

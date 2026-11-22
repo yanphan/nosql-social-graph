@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import MainLayout from '@/components/layout/MainLayout';
 import LoginPage from '@/pages/LoginPage';
 import AdminPage from '@/pages/AdminPage';
-import AnalystPage from '@/pages/AnalystPage';
+import { authService, homePathFor } from '@/services/auth';
 
 function RouteProgressBar() {
   const location = useLocation();
@@ -26,16 +26,69 @@ function RouteProgressBar() {
   );
 }
 
+const KNOWN_ROLES = ['user', 'admin'];
+
+// Chỉ cho vào khi đã đăng nhập và đúng vai trò. Admin là thành viên có thêm quyền nên vào được cả "/". Mỗi lần vào, kiểm tra lại phiên với backend
+// (vai trò hoặc trạng thái khóa có thể đã đổi từ phía quản trị).
+function RequireRole({ roles, children }) {
+  const location = useLocation();
+  const [state, setState] = useState({ checking: true, user: null });
+
+  useEffect(() => {
+    let alive = true;
+    authService.restoreSession().then((user) => alive && setState({ checking: false, user }));
+    return () => {
+      alive = false;
+    };
+  }, [location.pathname]);
+
+  if (state.checking) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-[#F5F7FA] text-xs text-[#64748B]" role="status">
+        Đang kiểm tra phiên đăng nhập…
+      </div>
+    );
+  }
+  if (!state.user) return <Navigate to="/login" replace />;
+  // Vai trò không còn được hỗ trợ (vd. phiên cũ của vai trò đã bỏ): đăng xuất để tránh vòng chuyển hướng
+  if (!KNOWN_ROLES.includes(state.user.role)) {
+    authService.logout();
+    return <Navigate to="/login" replace />;
+  }
+  if (!roles.includes(state.user.role)) return <Navigate to={homePathFor(state.user.role)} replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <RouteProgressBar />
       <Routes>
-        <Route path="/" element={<MainLayout />} />
+        <Route
+          path="/"
+          element={
+            <RequireRole roles={['user', 'admin']}>
+              <MainLayout />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/suggestions"
+          element={
+            <RequireRole roles={['user', 'admin']}>
+              <MainLayout view="suggestions" />
+            </RequireRole>
+          }
+        />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="/analytics" element={<AnalystPage />} />
-        <Route path="/analyst" element={<AnalystPage />} />
+        <Route
+          path="/admin"
+          element={
+            <RequireRole roles={['admin']}>
+              <AdminPage />
+            </RequireRole>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -70,20 +70,6 @@ export const mockUsers = [
     followingCount: 35,
   },
   {
-    id: 'usr_analyst',
-    username: 'analyst',
-    fullName: 'Nhà phân tích Dữ liệu',
-    email: 'analyst@falkordb-social.dev',
-    bio: 'Chuyên gia phân tích cấu trúc mạng lưới đồ thị và đo lường chỉ số ảnh hưởng PageRank.',
-    country: 'VN',
-    joinedAt: 1705276800000, // 2024-01-15
-    isVerified: false,
-    role: 'analyst',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Analyst&backgroundColor=c0aede',
-    followersCount: 86,
-    followingCount: 42,
-  },
-  {
     id: 'usr_alice',
     username: 'alice',
     fullName: 'Alice Nguyen',
@@ -197,7 +183,7 @@ export const mockPosts = [
     id: 'post_104',
     authorId: 'usr_bob',
     content:
-      'Đang nghiên cứu thuật toán: Gợi ý bạn bè dựa trên số lượng bạn chung và chủ đề sở thích tương đồng. Công thức điểm số kết hợp giữa Jaccard similarity và trọng số tương tác like/comment rất thú vị!',
+      'Đang nghiên cứu thuật toán: Gợi ý theo dõi dựa trên số kết nối chung và chủ đề sở thích tương đồng. Công thức điểm số kết hợp giữa Jaccard similarity và trọng số tương tác like/comment rất thú vị!',
     createdAt: Date.now() - 1000 * 60 * 720, // 12 giờ trước
     language: 'vi',
     likeCount: 29,
@@ -207,7 +193,7 @@ export const mockPosts = [
   },
   {
     id: 'post_105',
-    authorId: 'usr_analyst',
+    authorId: 'usr_charlie',
     content:
       'Thử nghiệm PageRank: Sau khi chạy PageRank trên toàn bộ đồ thị mạng lưới hơn 1,000 node, tài khoản @admin và @alice là 2 hub trung tâm có điểm số ảnh hưởng (influence score) cao nhất. Cây phân nhánh lan truyền chia sẻ bài viết cũng đang hình thành cụm rất rõ.',
     createdAt: Date.now() - 1000 * 60 * 1440, // 1 ngày trước
@@ -260,7 +246,7 @@ export const mockComments = [
   {
     id: 'cmt_004',
     postId: 'post_104',
-    authorId: 'usr_analyst',
+    authorId: 'usr_charlie',
     content: 'Nhớ normalize điểm số sở thích về đoạn [0, 1] trước khi nhân với trọng số tương tác nhé Bob.',
     createdAt: Date.now() - 1000 * 60 * 650,
     likeCount: 2,

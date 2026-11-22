@@ -27,29 +27,55 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
   const [likeBounce, setLikeBounce] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState(() => mockApi.getCommentsByPostId(post.id) || []);
+  // Bài thật (id pst_) lấy bình luận từ backend khi mở; chỉ bài mock mới dùng dữ liệu mẫu
+  // Bài mock có id dạng post_xxx; bài thật: pst_xxx (seed) hoặc nanoid (tạo qua API)
+  const isRealPost = Boolean(post.id) && !post.id.startsWith('post_');
+  const [comments, setComments] = useState(() => (isRealPost ? [] : mockApi.getCommentsByPostId(post.id) || []));
+  // Tổng số bình luận lấy từ API (commentCount), không phụ thuộc việc đã tải nội dung hay chưa
+  const [commentTotal, setCommentTotal] = useState(() => post.commentCount ?? comments.length);
   const [commentLikes, setCommentLikes] = useState({});
   const [newComment, setNewComment] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Load real comments from FalkorDB backend lazily when comments are opened
-  useEffect(() => {
-    if (showComments && post.id && post.id.startsWith('pst_')) {
-      postsService.getComments(post.id).then((res) => {
-        if (res?.items && res.items.length > 0) {
-          setComments(res.items.map((c, i) => ({
-            id: `cmt_${post.id}_${i}`,
-            author: {
-              fullName: c.username || 'Người dùng',
-              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.username || 'user'}&backgroundColor=b6e3f4`,
-            },
-            content: c.text,
-            createdAt: c.at,
-            likeCount: 0,
-          })));
-        }
-      }).catch(() => {});
+  // Bình luận thật: tải trang đầu khi mở, sau đó "Xem thêm" tải tiếp từng trang
+  const COMMENTS_PER_PAGE = 20;
+  const [commentPage, setCommentPage] = useState(0); // số trang đã tải
+  const [hasMoreComments, setHasMoreComments] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+
+  const toComment = (c) => ({
+    id: `cmt_${post.id}_${c.userId ?? c.username}_${c.at}`,
+    userId: c.userId,
+    at: c.at,
+    author: {
+      fullName: c.username || 'Người dùng',
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.username || 'user'}&backgroundColor=b6e3f4`,
+    },
+    content: c.text,
+    createdAt: c.at,
+    likeCount: 0,
+  });
+
+  const loadComments = async (page) => {
+    setLoadingComments(true);
+    try {
+      const res = await postsService.getComments(post.id, { page, limit: COMMENTS_PER_PAGE });
+      const items = (res?.items || []).map(toComment);
+      setComments((prev) => {
+        const base = page === 1 ? prev.filter((c) => c.pending) : prev; // giữ bình luận vừa gửi
+        const seen = new Set(base.map((c) => c.id));
+        return [...base, ...items.filter((c) => !seen.has(c.id))];
+      });
+      setHasMoreComments(!!res?.hasMore);
+      setCommentPage(page);
+    } finally {
+      setLoadingComments(false);
     }
+  };
+
+  useEffect(() => {
+    if (showComments && isRealPost && commentPage === 0) loadComments(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showComments, post.id]);
 
   // Toggle Like with 150ms bounce animation & sync backend
@@ -95,12 +121,42 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
       content: newComment.trim(),
       createdAt: Date.now(),
       likeCount: 0,
+      pending: true,
     };
 
     setComments((prev) => [created, ...prev]);
+    setCommentTotal((t) => t + 1);
     setNewComment('');
     setShowComments(true);
-    postsService.addComment(post.id, created.content).catch(() => {});
+    // Server trả về khóa (userId, at) của bình luận: cần để xóa được ngay sau khi gửi
+    postsService
+      .addComment(post.id, created.content)
+      .then((res) => {
+        if (!res?.comment) return;
+        setComments((prev) =>
+          prev.map((c) => (c.id === created.id ? { ...c, userId: res.comment.userId, at: res.comment.at } : c))
+        );
+        setCommentTotal(res.commentCount);
+      })
+      .catch(() => {});
+  };
+
+  // Người viết bình luận hoặc tác giả bài được xóa bình luận
+  const [confirmingDelete, setConfirmingDelete] = useState(null);
+  const [commentError, setCommentError] = useState('');
+  const canDeleteComment = (cmt) =>
+    isRealPost && cmt.userId && cmt.at && currentUser?.id && (cmt.userId === currentUser.id || post.author?.id === currentUser.id);
+
+  const handleDeleteComment = async (cmt) => {
+    setCommentError('');
+    try {
+      const res = await postsService.deleteComment(post.id, cmt.userId, cmt.at);
+      setComments((prev) => prev.filter((c) => c.id !== cmt.id));
+      setCommentTotal(res?.commentCount ?? ((t) => Math.max(0, t - 1)));
+      setConfirmingDelete(null);
+    } catch (err) {
+      setCommentError(err.message);
+    }
   };
 
   // Format thời gian ngắn gọn
@@ -115,6 +171,7 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
   };
 
   const latestComment = comments.length > 0 ? comments[0] : null;
+  const commentCount = Math.max(commentTotal, comments.length);
 
   return (
     <article className="bg-white rounded-[16px] p-5 sm:p-6 border border-[#E5E9F0] card-hover shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-3.5 animate-fade-up">
@@ -148,10 +205,10 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
                 </span>
               )}
 
-              {/* Tag gợi ý bạn bè đã thích (Thuật toán đồ thị BT4) */}
+              {/* Số người mình đang theo dõi đã thích bài (BT4) */}
               {post.friendLikes > 0 && (
                 <span className="text-[11px] font-semibold px-2 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  {post.friendLikes} bạn đã thích
+                  {post.friendLikes} người bạn theo dõi đã thích
                 </span>
               )}
             </div>
@@ -262,10 +319,11 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
               : 'text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF4FF]'
           }`}
           title="Bình luận"
-          aria-label="Bình luận"
+          aria-label={`Bình luận (${commentCount})`}
+          aria-expanded={showComments}
         >
           <MessageCircle className="h-4 w-4" />
-          <span className="tabular-nums">{comments.length}</span>
+          <span className="tabular-nums">{commentCount}</span>
         </button>
 
         {/* Share Button */}
@@ -299,18 +357,20 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
       {/* 4a. Collapsed: Preview on separate lines */}
       {!showComments && (
         <>
-          {comments.length > 0 && latestComment ? (
+          {commentCount > 0 ? (
             <div className="pt-2 space-y-1 text-xs border-t border-[#E5E9F0]">
-              <div className="text-[13px] text-[#475569] leading-snug">
-                <span className="font-semibold text-[#0F172A]">{latestComment.author?.fullName}: </span>
-                <span>{latestComment.content}</span>
-              </div>
+              {latestComment && (
+                <div className="text-[13px] text-[#475569] leading-snug">
+                  <span className="font-semibold text-[#0F172A]">{latestComment.author?.fullName}: </span>
+                  <span>{latestComment.content}</span>
+                </div>
+              )}
               <div>
                 <button
                   onClick={() => setShowComments(true)}
                   className="text-[13px] text-[#2563EB] hover:underline font-medium"
                 >
-                  Xem tất cả {comments.length} bình luận
+                  Xem tất cả {commentCount} bình luận
                 </button>
               </div>
             </div>
@@ -383,7 +443,10 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
                     </p>
                     <div className="flex items-center gap-3 text-[11px] text-[#64748B] pt-1">
                       <button 
+                        type="button"
                         onClick={() => handleToggleCommentLike(cmt.id, cmt.likeCount || 0)}
+                        aria-pressed={isLiked}
+                        aria-label={`Thích bình luận của ${cmt.author?.fullName || 'người dùng'}${currentCount > 0 ? ` (${currentCount} lượt thích)` : ''}`}
                         className={`flex items-center gap-1 transition-colors duration-150 btn-press ${
                           isLiked ? 'text-[#2563EB] font-medium' : 'hover:text-[#2563EB]'
                         }`}
@@ -394,12 +457,68 @@ export default function PostCard({ post, onTopicClick, currentUser, selectedTopi
                       <button className="hover:text-[#2563EB] transition-colors duration-150">
                         Trả lời
                       </button>
+                      {canDeleteComment(cmt) && confirmingDelete !== cmt.id && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingDelete(cmt.id)}
+                          aria-label={`Xóa bình luận của ${cmt.author?.fullName || 'người dùng'}`}
+                          className="hover:text-rose-700 transition-colors duration-150"
+                        >
+                          Xóa
+                        </button>
+                      )}
                     </div>
+                    {confirmingDelete === cmt.id && (
+                      <div className="flex items-center gap-2 pt-1 text-[11px]" role="group" aria-label="Xác nhận xóa bình luận">
+                        <span className="text-[#475569]">Xóa bình luận này?</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteComment(cmt)}
+                          className="h-6 px-2 rounded-md bg-rose-600 text-white font-medium hover:bg-rose-700"
+                        >
+                          Xóa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmingDelete(null);
+                            setCommentError('');
+                          }}
+                          className="h-6 px-2 rounded-md border border-[#E5E9F0] text-[#334155] hover:bg-white"
+                        >
+                          Hủy
+                        </button>
+                        {commentError && (
+                          <span role="alert" className="text-rose-700">
+                            {commentError}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
+
+          {/* Phân trang bình luận */}
+          {isRealPost && (hasMoreComments || loadingComments) && (
+            <div className="flex items-center justify-between gap-3 pl-[38px]">
+              <button
+                type="button"
+                onClick={() => loadComments(commentPage + 1)}
+                disabled={loadingComments}
+                className="text-[13px] font-medium text-[#1D4ED8] hover:underline disabled:no-underline disabled:text-[#64748B] rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+              >
+                {loadingComments
+                  ? 'Đang tải bình luận…'
+                  : `Xem thêm ${Math.min(COMMENTS_PER_PAGE, Math.max(0, commentCount - comments.length)) || ''} bình luận`.replace('  ', ' ')}
+              </button>
+              <span className="text-xs text-[#64748B] tabular-nums" aria-live="polite">
+                Đã hiện {comments.length}/{commentCount}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </article>
