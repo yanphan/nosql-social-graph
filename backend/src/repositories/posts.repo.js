@@ -1,5 +1,5 @@
 import { read, write } from '../db/graph.js';
-import { posts } from '../queries/posts.js';
+import { posts, interactions } from '../queries/posts.js';
 
 const toProps = (p) => (p?.properties ? p.properties : p);
 
@@ -21,6 +21,7 @@ const formatPostRow = (r) => {
     },
     topics: Array.isArray(r.topics) ? r.topics : [],
     likedByMe: Boolean(r.likedByMe),
+    sharedByMe: Boolean(r.sharedByMe),
   };
 };
 
@@ -58,17 +59,20 @@ export async function list({ me = null, authorId = null, topic = null, since = 0
   return rows.map(formatPostRow).filter(Boolean);
 }
 
+export async function sharedBy({ uid, me = null, skip = 0, limit = 20 }) {
+  const rows = await read(posts.sharedBy, { uid, me: me || null, skip, limit });
+  return rows.map((r) => ({ post: formatPostRow(r), sharedAt: Number(r.sharedAt ?? 0) })).filter((x) => x.post);
+}
+
 export async function findById(id, me = null) {
   const rows = await read(posts.findById, { id });
   if (!rows.length) return null;
   const r = rows[0];
   const post = formatPostRow(r);
   if (post && me) {
-    const hasLiked = await read(
-      'MATCH (:User {id:$me})-[l:LIKED]->(:Post {id:$id}) RETURN count(l) AS c',
-      { me, id }
-    );
-    post.likedByMe = Number(hasLiked[0]?.c ?? 0) > 0;
+    const [st] = await read(interactions.myState, { uid: me, pid: id });
+    post.likedByMe = Number(st?.liked ?? 0) > 0;
+    post.sharedByMe = Number(st?.shared ?? 0) > 0;
   }
   return post;
 }

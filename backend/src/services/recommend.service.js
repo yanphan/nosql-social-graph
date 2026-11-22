@@ -67,7 +67,7 @@ export async function getPostRecommendations(userId, limit = 10) {
   if (formatted.length < l) {
     const remaining = l - formatted.length;
     const since30Days = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const popular = (await analyticsRepo.popularPosts(since30Days, remaining + formatted.length)) || [];
+    const popular = (await analyticsRepo.popularPosts(since30Days, remaining + formatted.length, userId)) || [];
     const existingIds = new Set(formatted.map((x) => x.post.id));
 
     for (const pop of popular) {
